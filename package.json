@@ -1,9 +1,9 @@
 {
   "name": "trello-code-pilot",
   "displayName": "Trello Code Pilot",
-  "description": "Sync Trello cards with your repo and let Claude Code agents implement tasks automatically",
-  "version": "0.1.0",
-  "publisher": "luizhenriquesoares",
+  "description": "Turn Trello cards into code — AI agents read your board, create branches, implement tasks, and move cards automatically.",
+  "version": "0.2.0",
+  "publisher": "LuizHenriqueSoares",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,15 +13,20 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Machine Learning"
   ],
   "keywords": [
     "trello",
     "claude",
+    "claude-code",
     "ai",
     "agent",
     "automation",
-    "task-management"
+    "task-management",
+    "productivity",
+    "kanban",
+    "copilot"
   ],
   "activationEvents": [
     "workspaceContains:.trello-pilot.json"
@@ -67,6 +72,11 @@
         "icon": "$(run-all)"
       },
       {
+        "command": "trelloPilot.openCard",
+        "title": "Trello Code Pilot: Open Card in Trello",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "trelloPilot.setCredentials",
         "title": "Trello Code Pilot: Set Trello API Credentials"
       }
@@ -87,8 +97,13 @@
       "view/item/context": [
         {
           "command": "trelloPilot.runCard",
-          "when": "view == trelloPilot.cards",
-          "group": "inline"
+          "when": "view == trelloPilot.cards && viewItem == card",
+          "group": "inline@1"
+        },
+        {
+          "command": "trelloPilot.openCard",
+          "when": "view == trelloPilot.cards && viewItem == card",
+          "group": "inline@2"
         }
       ]
     },
@@ -113,7 +128,7 @@
         "trelloPilot.branchPrefix": {
           "type": "string",
           "default": "feat/",
-          "description": "Prefix for auto-created branches"
+          "description": "Prefix for auto-created branches (e.g. feat/, fix/, chore/)"
         }
       }
     }

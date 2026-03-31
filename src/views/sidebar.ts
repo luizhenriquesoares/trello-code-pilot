@@ -9,30 +9,80 @@ export class CardTreeItem extends vscode.TreeItem {
   ) {
     super(card.name, vscode.TreeItemCollapsibleState.None);
 
-    this.tooltip = `${card.name}\n${card.desc?.substring(0, 200) || 'No description'}`;
-    this.description = listName;
+    const descPreview = card.desc?.substring(0, 200) || 'No description';
+    const labels = card.labels?.map((l) => l.name || l.color).join(', ');
+    const dueStr = card.due ? `Due: ${new Date(card.due).toLocaleDateString()}` : '';
+
+    this.tooltip = new vscode.MarkdownString(
+      `### ${card.name}\n\n${descPreview}\n\n` +
+      (labels ? `**Labels:** ${labels}\n\n` : '') +
+      (dueStr ? `**${dueStr}**\n\n` : '') +
+      (card.checklists?.length ? `**Checklists:** ${card.checklists.length}\n\n` : '') +
+      `[Open in Trello](${card.url})`,
+    );
+    this.tooltip.isTrusted = true;
+
+    this.description = this.buildDescription();
     this.contextValue = 'card';
 
     // Icon based on labels
-    if (card.labels?.length) {
-      const color = card.labels[0].color;
-      this.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(
-        this.labelColorToTheme(color),
-      ));
-    } else {
-      this.iconPath = new vscode.ThemeIcon('note');
-    }
-
     if (card.due) {
       const due = new Date(card.due);
       const now = new Date();
       if (due < now && !card.dueComplete) {
         this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('errorForeground'));
+      } else if (card.dueComplete) {
+        this.iconPath = new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('testing.iconPassed'));
+      } else {
+        this.iconPath = this.getLabelIcon();
       }
+    } else {
+      this.iconPath = this.getLabelIcon();
     }
   }
 
-  private labelColorToTheme(color: string): string {
+  private buildDescription(): string {
+    const parts: string[] = [];
+
+    if (this.card.labels?.length) {
+      parts.push(this.card.labels.map((l) => l.name || l.color).join(', '));
+    }
+
+    if (this.card.due) {
+      const due = new Date(this.card.due);
+      const now = new Date();
+      const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (this.card.dueComplete) {
+        parts.push('done');
+      } else if (diffDays < 0) {
+        parts.push(`${Math.abs(diffDays)}d overdue`);
+      } else if (diffDays === 0) {
+        parts.push('due today');
+      } else if (diffDays <= 3) {
+        parts.push(`${diffDays}d left`);
+      }
+    }
+
+    if (this.card.checklists?.length) {
+      const total = this.card.checklists.reduce((sum, cl) => sum + cl.checkItems.length, 0);
+      const done = this.card.checklists.reduce(
+        (sum, cl) => sum + cl.checkItems.filter((i) => i.state === 'complete').length, 0,
+      );
+      if (total > 0) {
+        parts.push(`${done}/${total}`);
+      }
+    }
+
+    return parts.join(' | ');
+  }
+
+  private getLabelIcon(): vscode.ThemeIcon {
+    if (!this.card.labels?.length) {
+      return new vscode.ThemeIcon('note');
+    }
+
+    const color = this.card.labels[0].color;
     const map: Record<string, string> = {
       red: 'errorForeground',
       orange: 'editorWarning.foreground',
@@ -41,7 +91,11 @@ export class CardTreeItem extends vscode.TreeItem {
       blue: 'textLink.foreground',
       purple: 'textLink.activeForeground',
     };
-    return map[color] || 'foreground';
+
+    return new vscode.ThemeIcon(
+      'circle-filled',
+      new vscode.ThemeColor(map[color] || 'foreground'),
+    );
   }
 }
 
@@ -51,7 +105,7 @@ export class ListTreeItem extends vscode.TreeItem {
     public readonly cards: TrelloCard[],
   ) {
     super(list.name, vscode.TreeItemCollapsibleState.Expanded);
-    this.description = `${cards.length} cards`;
+    this.description = `${cards.length} card${cards.length !== 1 ? 's' : ''}`;
     this.iconPath = new vscode.ThemeIcon('list-unordered');
     this.contextValue = 'list';
   }
@@ -77,7 +131,18 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
     if (!this.config) return;
 
     this.lists = await this.api.getBoardLists(this.config.boardId);
-    this.cards = await this.api.getBoardCards(this.config.boardId);
+    const allCards = await this.api.getBoardCards(this.config.boardId);
+
+    // Enrich cards with checklists
+    this.cards = await Promise.all(
+      allCards.map(async (card) => {
+        if (!card.checklists?.length) {
+          const checklists = await this.api.getCardChecklists(card.id);
+          return { ...card, checklists };
+        }
+        return card;
+      }),
+    );
 
     // Filter only the mapped lists (todo, doing, review)
     const relevantListIds = new Set([

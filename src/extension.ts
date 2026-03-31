@@ -4,13 +4,18 @@ import { WorkspaceMapper } from './trello/mapper';
 import { CredentialStore } from './config/credentials';
 import { CardsTreeProvider, CardTreeItem } from './views/sidebar';
 import { AgentRunner } from './claude/agent-runner';
+import { OutputPanel } from './views/output-panel';
 
 let treeProvider: CardsTreeProvider;
+let outputPanel: OutputPanel;
 
 export async function activate(context: vscode.ExtensionContext) {
   const credentialStore = new CredentialStore(context.secrets);
+  outputPanel = new OutputPanel();
+  context.subscriptions.push({ dispose: () => outputPanel.dispose() });
 
-  // Try to load credentials
+  outputPanel.logInfo('Trello Code Pilot activated');
+
   let credentials = await credentialStore.getCredentials();
 
   const ensureCredentials = async () => {
@@ -23,7 +28,7 @@ export async function activate(context: vscode.ExtensionContext) {
     return credentials;
   };
 
-  // Register set credentials command
+  // Set Credentials
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.setCredentials', async () => {
       credentials = await credentialStore.setCredentials();
@@ -33,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Register setup command
+  // Setup Board
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.setup', async () => {
       try {
@@ -45,6 +50,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (config && treeProvider) {
           treeProvider.updateConfig(config);
           await treeProvider.refresh();
+          outputPanel.logInfo(`Connected to board: ${config.boardName}`);
         }
       } catch (err: any) {
         vscode.window.showErrorMessage(`Setup failed: ${err.message}`);
@@ -52,7 +58,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Register sync command
+  // Sync Cards
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.sync', async () => {
       try {
@@ -69,14 +75,16 @@ export async function activate(context: vscode.ExtensionContext) {
         treeProvider.updateConfig(config);
         await treeProvider.refresh();
 
+        outputPanel.logInfo(`Synced cards from "${config.boardName}"`);
         vscode.window.showInformationMessage('Trello cards synced');
       } catch (err: any) {
         vscode.window.showErrorMessage(`Sync failed: ${err.message}`);
+        outputPanel.logError(`Sync failed: ${err.message}`);
       }
     }),
   );
 
-  // Register run card command
+  // Run Agent on Single Card
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.runCard', async (item?: CardTreeItem) => {
       try {
@@ -92,7 +100,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
         let card = item?.card;
 
-        // If no card passed (command palette), let user pick
         if (!card) {
           const cardItems = treeProvider.getCardItems();
           if (!cardItems.length) {
@@ -101,7 +108,11 @@ export async function activate(context: vscode.ExtensionContext) {
           }
 
           const pick = await vscode.window.showQuickPick(
-            cardItems.map((ci) => ({ label: ci.card.name, card: ci.card })),
+            cardItems.map((ci) => ({
+              label: ci.card.name,
+              description: ci.card.labels?.map((l) => l.name).join(', '),
+              card: ci.card,
+            })),
             { placeHolder: 'Select a card to run the agent on' },
           );
           if (!pick) return;
@@ -115,19 +126,20 @@ export async function activate(context: vscode.ExtensionContext) {
         );
         if (confirm !== 'Run') return;
 
-        const runner = new AgentRunner(api, config);
+        const runner = new AgentRunner(api, config, outputPanel);
 
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: `Running agent: ${card.name}`,
+            title: `Agent running: ${card.name}`,
             cancellable: false,
           },
           async () => {
             const result = await runner.run(card!);
             if (result.success) {
+              const secs = Math.round(result.duration / 1000);
               vscode.window.showInformationMessage(
-                `Agent completed: "${card!.name}"`,
+                `Agent completed "${card!.name}" in ${secs}s`,
               );
               await treeProvider.refresh();
             }
@@ -135,11 +147,12 @@ export async function activate(context: vscode.ExtensionContext) {
         );
       } catch (err: any) {
         vscode.window.showErrorMessage(`Agent failed: ${err.message}`);
+        outputPanel.logError(`Agent failed: ${err.message}`);
       }
     }),
   );
 
-  // Register run all command
+  // Run Agent on All Cards
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.runAll', async () => {
       try {
@@ -159,38 +172,58 @@ export async function activate(context: vscode.ExtensionContext) {
           return;
         }
 
-        const confirm = await vscode.window.showInformationMessage(
-          `Run Claude Code agent on ${cardItems.length} cards?`,
-          'Run All',
-          'Cancel',
+        const modeChoice = await vscode.window.showQuickPick(
+          [
+            { label: 'Sequential', description: 'Run one card at a time', mode: 'sequential' },
+            { label: 'Parallel (2)', description: 'Run 2 cards simultaneously', mode: 'parallel-2' },
+            { label: 'Parallel (3)', description: 'Run 3 cards simultaneously', mode: 'parallel-3' },
+          ],
+          { placeHolder: `Run ${cardItems.length} cards — choose execution mode` },
         );
-        if (confirm !== 'Run All') return;
+        if (!modeChoice) return;
 
-        const runner = new AgentRunner(api, config);
+        const runner = new AgentRunner(api, config, outputPanel);
+        const cards = cardItems.map((ci) => ci.card);
 
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: 'Running agents on all cards...',
+            title: `Running agents (${modeChoice.label})...`,
             cancellable: false,
           },
           async (progress) => {
-            for (let i = 0; i < cardItems.length; i++) {
-              const card = cardItems[i].card;
-              progress.report({
-                message: `(${i + 1}/${cardItems.length}) ${card.name}`,
-                increment: (100 / cardItems.length),
-              });
-              await runner.run(card);
+            if (modeChoice.mode === 'sequential') {
+              for (let i = 0; i < cards.length; i++) {
+                progress.report({
+                  message: `(${i + 1}/${cards.length}) ${cards[i].name}`,
+                  increment: 100 / cards.length,
+                });
+                await runner.run(cards[i]);
+              }
+            } else {
+              const concurrency = modeChoice.mode === 'parallel-2' ? 2 : 3;
+              await runner.runParallel(cards, concurrency);
             }
+
+            const successCount = cards.length;
             vscode.window.showInformationMessage(
-              `All ${cardItems.length} cards processed!`,
+              `All ${successCount} cards processed!`,
             );
             await treeProvider.refresh();
           },
         );
       } catch (err: any) {
         vscode.window.showErrorMessage(`Run all failed: ${err.message}`);
+        outputPanel.logError(`Run all failed: ${err.message}`);
+      }
+    }),
+  );
+
+  // Open Card in Trello (browser)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.openCard', async (item?: CardTreeItem) => {
+      if (item?.card?.url) {
+        vscode.env.openExternal(vscode.Uri.parse(item.card.url));
       }
     }),
   );
@@ -200,7 +233,6 @@ export async function activate(context: vscode.ExtensionContext) {
     const api = new TrelloApi(credentials);
     const mapper = new WorkspaceMapper(api);
     const config = mapper.loadConfig();
-
     treeProvider = new CardsTreeProvider(api, config);
   } else {
     treeProvider = new CardsTreeProvider(
@@ -215,7 +247,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
-  // Auto-sync on activation if config exists
+  // Auto-sync on activation
   if (credentials) {
     const api = new TrelloApi(credentials);
     const mapper = new WorkspaceMapper(api);
