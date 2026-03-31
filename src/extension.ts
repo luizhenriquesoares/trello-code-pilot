@@ -54,6 +54,13 @@ export async function activate(context: vscode.ExtensionContext) {
     return credentials;
   };
 
+  // Focus Setup Panel (keyboard shortcut)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.focusSetup', async () => {
+      await vscode.commands.executeCommand('trelloPilot.setup.focus');
+    }),
+  );
+
   // Set Credentials
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.setCredentials', async () => {
