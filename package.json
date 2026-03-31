@@ -2,7 +2,7 @@
   "name": "trello-code-pilot",
   "displayName": "Trello Code Pilot",
   "description": "Turn Trello cards into code — AI agents read your board, create branches, implement tasks, and move cards automatically.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "LuizHenriqueSoares",
   "license": "MIT",
   "repository": {
