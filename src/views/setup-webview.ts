@@ -93,7 +93,7 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
         <div class="step-content">
           <h3>Get Trello API Key</h3>
           <p>Create a Power-Up to get your API key and token.</p>
-          <button class="btn btn-secondary" onclick="send('openTrelloAdmin')">
+          <button class="btn btn-secondary" id="btnOpenTrelloAdmin">
             Open Trello Admin
             <span class="icon">&#8599;</span>
           </button>
@@ -105,7 +105,7 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
         <div class="step-content">
           <h3>Enter Credentials</h3>
           <p>Your API key and token are stored securely.</p>
-          <button class="btn btn-primary" onclick="send('setCredentials')">
+          <button class="btn btn-primary" id="btnSetCredentials">
             Set API Credentials
           </button>
         </div>
@@ -115,9 +115,8 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    function send(command) {
-      vscode.postMessage({ command });
-    }
+    document.getElementById('btnOpenTrelloAdmin').addEventListener('click', () => vscode.postMessage({ command: 'openTrelloAdmin' }));
+    document.getElementById('btnSetCredentials').addEventListener('click', () => vscode.postMessage({ command: 'setCredentials' }));
   </script>
 </body>
 </html>`;
@@ -148,7 +147,7 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
         <div class="step-content">
           <h3>Select Board & Lists</h3>
           <p>Map your To Do, In Progress, Done, and Review lists.</p>
-          <button class="btn btn-primary" onclick="send('setup')">
+          <button class="btn btn-primary" id="btnSetup">
             Connect Board
           </button>
         </div>
@@ -157,16 +156,15 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
 
     <div class="divider"></div>
 
-    <button class="btn btn-link" onclick="send('setCredentials')">
+    <button class="btn btn-link" id="btnChangeCredentials">
       Change API credentials
     </button>
   </div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    function send(command) {
-      vscode.postMessage({ command });
-    }
+    document.getElementById('btnSetup').addEventListener('click', () => vscode.postMessage({ command: 'setup' }));
+    document.getElementById('btnChangeCredentials').addEventListener('click', () => vscode.postMessage({ command: 'setCredentials' }));
   </script>
 </body>
 </html>`;
@@ -189,21 +187,21 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary btn-full" onclick="send('sync')">
+      <button class="btn btn-primary btn-full" id="btnSync">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
           <path d="M13.451 5.609l-.579-.939-1.068.812-.076.094c-.335.415-.927 1.146-1.26 1.158-.26-.003-.51-.398-.84-1.108l-.053-.12C8.905 3.816 8.047 2 6.264 2 4.652 2 3.6 3.51 2.812 5.381l-.192.465 1.733.715.192-.465C5.2 4.58 5.858 3.7 6.264 3.7c.37 0 .845.89 1.39 2.126l.079.178c.529 1.2 1.128 2.562 2.328 2.589 1.058.003 1.846-.91 2.336-1.517l.127-.154.48.778.147-.291c.652-1.293 1.312-2.736 1.349-4.409h-1.7c-.023 1.01-.362 1.987-.749 2.609zM9.736 10.391c-.529-1.2-1.128-2.562-2.328-2.588-1.058-.003-1.846.91-2.336 1.517l-.127.154-.48-.778-.147.291c-.651 1.293-1.312 2.736-1.349 4.409h1.7c.023-1.01.362-1.987.749-2.609l.579.939 1.068-.812.076-.094c.335-.415.927-1.146 1.26-1.158.26.003.51.398.84 1.108l.053.12c.67 1.69 1.528 3.506 3.311 3.506 1.612 0 2.664-1.51 3.452-3.381l.192-.465-1.733-.715-.192.465c-.656 1.516-1.314 2.396-1.72 2.396-.37 0-.845-.89-1.39-2.126l-.079-.178z"/>
         </svg>
         Sync Cards
       </button>
 
-      <button class="btn btn-secondary btn-full" onclick="send('setup')">
+      <button class="btn btn-secondary btn-full" id="btnChangeBoard">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
           <path d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.8 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.4-.5V7.4l-2.4-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM9.4 1l.5 2.4L12 2.1l2 2-1.4 2.1 2.4.4v2.8l-2.4.5L14 12l-2 2-2.1-1.4-.5 2.4H6.6l-.5-2.4L4 14l-2-2 1.4-2.1L1 9.4V6.6l2.4-.5L2 4l2-2 2.1 1.4.5-2.4h2.8zM8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-1a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
         </svg>
         Change Board
       </button>
 
-      <button class="btn btn-link btn-full" onclick="send('openSettings')">
+      <button class="btn btn-link btn-full" id="btnOpenSettings">
         Extension Settings
       </button>
     </div>
@@ -222,16 +220,17 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
 
     <div class="divider"></div>
 
-    <button class="btn btn-link btn-full" onclick="send('setCredentials')">
+    <button class="btn btn-link btn-full" id="btnChangeCredentials">
       Change API credentials
     </button>
   </div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    function send(command) {
-      vscode.postMessage({ command });
-    }
+    document.getElementById('btnSync').addEventListener('click', () => vscode.postMessage({ command: 'sync' }));
+    document.getElementById('btnChangeBoard').addEventListener('click', () => vscode.postMessage({ command: 'setup' }));
+    document.getElementById('btnOpenSettings').addEventListener('click', () => vscode.postMessage({ command: 'openSettings' }));
+    document.getElementById('btnChangeCredentials').addEventListener('click', () => vscode.postMessage({ command: 'setCredentials' }));
   </script>
 </body>
 </html>`;
