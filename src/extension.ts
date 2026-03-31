@@ -5,9 +5,11 @@ import { CredentialStore } from './config/credentials';
 import { CardsTreeProvider, CardTreeItem } from './views/sidebar';
 import { AgentRunner } from './claude/agent-runner';
 import { OutputPanel } from './views/output-panel';
+import { SetupWebviewProvider } from './views/setup-webview';
 
 let treeProvider: CardsTreeProvider;
 let outputPanel: OutputPanel;
+let setupWebview: SetupWebviewProvider;
 
 export async function activate(context: vscode.ExtensionContext) {
   const credentialStore = new CredentialStore(context.secrets);
@@ -16,7 +18,31 @@ export async function activate(context: vscode.ExtensionContext) {
 
   outputPanel.logInfo('Trello Code Pilot activated');
 
+  // Setup Webview
+  setupWebview = new SetupWebviewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(SetupWebviewProvider.viewType, setupWebview),
+  );
+
   let credentials = await credentialStore.getCredentials();
+
+  const updateSetupState = () => {
+    if (!credentials) {
+      setupWebview.setState('no-credentials');
+    } else {
+      const api = new TrelloApi(credentials);
+      const mapper = new WorkspaceMapper(api);
+      const config = mapper.loadConfig();
+      if (config) {
+        setupWebview.setState('ready', config.boardName);
+      } else {
+        setupWebview.setState('no-board');
+      }
+    }
+  };
+
+  // Set initial state
+  updateSetupState();
 
   const ensureCredentials = async () => {
     if (!credentials) {
@@ -34,6 +60,7 @@ export async function activate(context: vscode.ExtensionContext) {
       credentials = await credentialStore.setCredentials();
       if (credentials) {
         vscode.window.showInformationMessage('Credentials saved. Run Sync to load cards.');
+        updateSetupState();
       }
     }),
   );
@@ -51,6 +78,7 @@ export async function activate(context: vscode.ExtensionContext) {
           treeProvider.updateConfig(config);
           await treeProvider.refresh();
           outputPanel.logInfo(`Connected to board: ${config.boardName}`);
+          updateSetupState();
         }
       } catch (err: any) {
         vscode.window.showErrorMessage(`Setup failed: ${err.message}`);
@@ -76,6 +104,7 @@ export async function activate(context: vscode.ExtensionContext) {
         await treeProvider.refresh();
 
         outputPanel.logInfo(`Synced cards from "${config.boardName}"`);
+        updateSetupState();
         vscode.window.showInformationMessage('Trello cards synced');
       } catch (err: any) {
         vscode.window.showErrorMessage(`Sync failed: ${err.message}`);
@@ -205,9 +234,8 @@ export async function activate(context: vscode.ExtensionContext) {
               await runner.runParallel(cards, concurrency);
             }
 
-            const successCount = cards.length;
             vscode.window.showInformationMessage(
-              `All ${successCount} cards processed!`,
+              `All ${cards.length} cards processed!`,
             );
             await treeProvider.refresh();
           },
