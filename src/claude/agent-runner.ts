@@ -445,6 +445,72 @@ export class AgentRunner {
     return results;
   }
 
+  /**
+   * Run the full pipeline automatically: Implement → Review → QA → Done
+   * Each stage runs in sequence, moving the card through the pipeline.
+   */
+  async runFullPipeline(card: TrelloCard): Promise<AgentRunResult> {
+    const startTime = Date.now();
+
+    // Stage 1: Implement
+    this.output.logSeparator();
+    this.output.logInfo(`=== FULL PIPELINE: ${card.name} ===`);
+    this.output.logInfo('Stage 1/3: Implementation');
+
+    const implResult = await this.run(card);
+    if (!implResult.success) {
+      this.output.logError('Pipeline stopped: Implementation failed');
+      return implResult;
+    }
+
+    // Refresh card data (it moved to Review)
+    const cardAfterImpl = await this.api.getCard(card.id);
+
+    // Stage 2: Review
+    this.output.logSeparator();
+    this.output.logInfo('Stage 2/3: Code Review');
+
+    const reviewResult = await this.review(cardAfterImpl);
+    if (!reviewResult.success) {
+      this.output.logError('Pipeline stopped: Review failed');
+      return reviewResult;
+    }
+
+    // Refresh card data (it moved to QA)
+    const cardAfterReview = await this.api.getCard(card.id);
+
+    // Stage 3: QA
+    this.output.logSeparator();
+    this.output.logInfo('Stage 3/3: QA');
+
+    const qaResult = await this.qa(cardAfterReview);
+
+    const totalDuration = Date.now() - startTime;
+    const totalMin = Math.round(totalDuration / 60000);
+
+    if (qaResult.success) {
+      this.output.logSeparator();
+      this.output.logSuccess(`=== PIPELINE COMPLETE: "${card.name}" — ${totalMin}min total ===`);
+
+      // Final summary comment on Trello
+      try {
+        await this.api.addComment(card.id, [
+          `**Full Pipeline Complete** (${totalMin}min total)`,
+          '',
+          `- Implementation: ${Math.round(implResult.duration / 1000)}s`,
+          `- Review: ${Math.round(reviewResult.duration / 1000)}s`,
+          `- QA: ${Math.round(qaResult.duration / 1000)}s`,
+          '',
+          'Task fully automated from Todo to Done.',
+        ].join('\n'));
+      } catch { /* ignore */ }
+    } else {
+      this.output.logError(`Pipeline stopped at QA: ${qaResult.output}`);
+    }
+
+    return { ...qaResult, duration: totalDuration };
+  }
+
   private openClaudeInTerminal(
     claudePath: string,
     cwd: string,

@@ -201,23 +201,30 @@ export async function activate(context: vscode.ExtensionContext) {
           }
           // 'Run Anyway' — continue below
         } else {
-          const confirm = await vscode.window.showInformationMessage(
-            `Run Claude Code agent on "${card.name}"?`,
-            'Run',
-            'Cancel',
+          const confirm = await vscode.window.showQuickPick(
+            [
+              { label: 'Full Pipeline', description: 'Implement → Review → QA → Done (fully automatic)', mode: 'full' },
+              { label: 'Implement Only', description: 'Just implement, stop at Review', mode: 'implement' },
+              { label: 'Cancel', description: '', mode: 'cancel' },
+            ],
+            { placeHolder: `"${card.name}" — choose execution mode` },
           );
-          if (confirm !== 'Run') return;
+          if (!confirm || confirm.mode === 'cancel') return;
+          var runMode = confirm.mode;
         }
 
         treeProvider.setCardRunning(card.id, true);
         updateRunningUI();
 
         try {
-          const result = await runner.run(card!);
+          const result = runMode === 'full'
+            ? await runner.runFullPipeline(card!)
+            : await runner.run(card!);
           if (result.success) {
             const secs = Math.round(result.duration / 1000);
+            const label = runMode === 'full' ? 'Pipeline complete' : 'Agent completed';
             vscode.window.showInformationMessage(
-              `Agent completed "${card!.name}" in ${secs}s`,
+              `${label} "${card!.name}" in ${secs}s`,
             );
             await treeProvider.refresh();
           }
