@@ -6,6 +6,7 @@ export interface PipelineCounts {
   review: number;
   qa: number;
   done: number;
+  running?: number;
 }
 
 export class SetupWebviewProvider implements vscode.WebviewViewProvider {
@@ -64,6 +65,15 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
           break;
         case 'openSettings':
           vscode.commands.executeCommand('workbench.action.openSettings', 'trelloPilot');
+          break;
+        case 'registerWebhook':
+          vscode.commands.executeCommand('trelloPilot.registerWebhook');
+          break;
+        case 'manageWebhooks':
+          vscode.commands.executeCommand('trelloPilot.manageWebhooks');
+          break;
+        case 'configureSlack':
+          vscode.commands.executeCommand('trelloPilot.configureSlack');
           break;
       }
     });
@@ -191,6 +201,14 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
   private _getReadyHtml(nonce: string): string {
     const c = this._counts;
     const total = c.todo + c.doing + c.review + c.qa + c.done;
+    const running = c.running || 0;
+
+    const runningBanner = running > 0
+      ? `<div class="running-banner">
+          <span class="running-spinner"></span>
+          ${running} agent${running > 1 ? 's' : ''} running
+        </div>`
+      : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -206,6 +224,8 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
       <span class="dot"></span>
       Connected to ${this._escapeHtml(this._boardName || 'board')}
     </div>
+
+    ${runningBanner}
 
     <div class="pipeline">
       <div class="pipeline-header">
@@ -275,6 +295,17 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
 
     <div class="divider"></div>
 
+    <div class="info">
+      <h4>Automation</h4>
+      <ul>
+        <li><button class="btn btn-link" id="btnRegisterWebhook">Register Trello Webhook</button></li>
+        <li><button class="btn btn-link" id="btnManageWebhooks">Manage Webhooks</button></li>
+        <li><button class="btn btn-link" id="btnConfigureSlack">Configure Slack</button></li>
+      </ul>
+    </div>
+
+    <div class="divider"></div>
+
     <div class="footer-links">
       <button class="btn btn-link" id="btnOpenSettings">Settings</button>
       <span class="footer-sep">|</span>
@@ -288,6 +319,9 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
     document.getElementById('btnChangeBoard').addEventListener('click', () => vscode.postMessage({ command: 'setup' }));
     document.getElementById('btnOpenSettings').addEventListener('click', () => vscode.postMessage({ command: 'openSettings' }));
     document.getElementById('btnChangeCredentials').addEventListener('click', () => vscode.postMessage({ command: 'setCredentials' }));
+    document.getElementById('btnRegisterWebhook').addEventListener('click', () => vscode.postMessage({ command: 'registerWebhook' }));
+    document.getElementById('btnManageWebhooks').addEventListener('click', () => vscode.postMessage({ command: 'manageWebhooks' }));
+    document.getElementById('btnConfigureSlack').addEventListener('click', () => vscode.postMessage({ command: 'configureSlack' }));
   </script>
 </body>
 </html>`;
@@ -474,6 +508,35 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
         color: var(--vscode-descriptionForeground);
         opacity: 0.4;
         font-size: 11px;
+      }
+      .running-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        border-radius: 6px;
+        background: rgba(0, 122, 204, 0.15);
+        color: var(--vscode-textLink-foreground);
+        font-size: 12px;
+        font-weight: 600;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      .running-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid transparent;
+        border-top-color: var(--vscode-textLink-foreground);
+        border-right-color: var(--vscode-textLink-foreground);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
       }
     `;
   }

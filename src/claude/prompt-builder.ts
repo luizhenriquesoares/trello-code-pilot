@@ -67,17 +67,23 @@ export class PromptBuilder {
       'Commit when done with a clear message referencing this task.',
     );
     sections.push('');
+    sections.push('IMPORTANT: This is a fully automated pipeline. Do NOT ask for confirmation. Do NOT wait for user input. Execute all changes immediately, commit, and finish.');
+    sections.push('Do NOT commit unrelated files like .trello-pilot-origins.json, .trello-pilot.json, or any config/env files.');
+    sections.push('');
     sections.push(`Trello card: ${card.url}`);
 
     return sections.join('\n');
   }
 
-  buildReview(card: TrelloCard, branchName: string): string {
+  buildReview(card: TrelloCard, branchName: string, prUrl?: string): string {
     const sections: string[] = [];
 
     sections.push('# Code Review');
     sections.push('');
     sections.push(`## Task: ${card.name}`);
+    if (prUrl) {
+      sections.push(`## Pull Request: ${prUrl}`);
+    }
     sections.push('');
 
     if (card.desc) {
@@ -150,6 +156,9 @@ export class PromptBuilder {
     sections.push('If issues are found, fix them directly in the code. Commit with message: "fix: code review fixes for <task-name>"');
     sections.push('If no issues, report "Review passed — no issues found."');
     sections.push('');
+    sections.push('IMPORTANT: This is a fully automated pipeline. Do NOT ask for confirmation. Do NOT wait for user input. Execute all changes immediately, commit, and finish.');
+    sections.push('Do NOT commit unrelated files like .trello-pilot-origins.json, .trello-pilot.json, or any config/env files.');
+    sections.push('');
     sections.push(`Trello card: ${card.url}`);
 
     return sections.join('\n');
@@ -217,6 +226,9 @@ export class PromptBuilder {
     sections.push('3. Re-run the failing checks');
     sections.push('4. If all pass now, proceed with merge (Step 5 above)');
     sections.push('5. If still failing, report the failures and do NOT merge');
+    sections.push('');
+    sections.push('IMPORTANT: This is a fully automated pipeline. Do NOT ask for confirmation. Do NOT wait for user input. Execute all changes immediately, commit, and finish.');
+    sections.push('Do NOT commit unrelated files like .trello-pilot-origins.json, .trello-pilot.json, or any config/env files.');
     sections.push('');
     sections.push(`Trello card: ${card.url}`);
 

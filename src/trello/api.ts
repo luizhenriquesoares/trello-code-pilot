@@ -92,4 +92,48 @@ export class TrelloApi {
       fields: 'fullName,username',
     });
   }
+
+  async addComment(cardId: string, text: string): Promise<void> {
+    await this.post(`/cards/${cardId}/actions/comments`, { text });
+  }
+
+  async createWebhook(callbackUrl: string, idModel: string, description: string): Promise<{ id: string; callbackURL: string }> {
+    return this.post('/webhooks', {
+      callbackURL: callbackUrl,
+      idModel,
+      description,
+    });
+  }
+
+  async deleteWebhook(webhookId: string): Promise<void> {
+    const url = new URL(`${BASE_URL}/webhooks/${webhookId}`);
+    url.searchParams.set('key', this.credentials.key);
+    url.searchParams.set('token', this.credentials.token);
+    const res = await fetch(url.toString(), { method: 'DELETE' });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Trello API error ${res.status}: ${text}`);
+    }
+  }
+
+  async listWebhooks(): Promise<{ id: string; description: string; callbackURL: string; idModel: string; active: boolean }[]> {
+    return this.request('/tokens/' + this.credentials.token + '/webhooks');
+  }
+
+  private async post<T>(path: string, body: Record<string, string> = {}): Promise<T> {
+    const url = new URL(`${BASE_URL}${path}`);
+    url.searchParams.set('key', this.credentials.key);
+    url.searchParams.set('token', this.credentials.token);
+
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Trello API error ${res.status}: ${text}`);
+    }
+    return res.json() as Promise<T>;
+  }
 }

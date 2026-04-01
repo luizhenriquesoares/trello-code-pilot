@@ -1,0 +1,20 @@
+{
+  "name": "trello-pilot-worker",
+  "version": "0.1.0",
+  "description": "SQS-driven worker for Trello Code Pilot pipeline (implement, review, QA)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.500.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  }
+}

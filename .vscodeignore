@@ -5,3 +5,9 @@ node_modules/**
 tsconfig.json
 *.vsix
 .claude/**
+worker/**
+infra/**
+shared/**
+docker-compose.yml
+.env.example
+*.md

@@ -8,8 +8,23 @@ import { OutputPanel } from './views/output-panel';
 import { SetupWebviewProvider } from './views/setup-webview';
 
 let treeProvider: CardsTreeProvider;
+let treeView: vscode.TreeView<vscode.TreeItem>;
 let outputPanel: OutputPanel;
 let setupWebview: SetupWebviewProvider;
+
+function updateRunningUI() {
+  const counts = treeProvider.getCounts();
+  setupWebview.updateCounts(counts);
+
+  // Badge on tree view tab
+  if (counts.running > 0) {
+    treeView.badge = { value: counts.running, tooltip: `${counts.running} agent(s) running` };
+    treeView.description = `${counts.running} running`;
+  } else {
+    treeView.badge = undefined;
+    treeView.description = undefined;
+  }
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   const credentialStore = new CredentialStore(context.secrets);
@@ -109,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         treeProvider.updateConfig(config);
         await treeProvider.refresh();
-        setupWebview.updateCounts(treeProvider.getCounts());
+        updateRunningUI();
 
         outputPanel.logInfo(`Synced cards from "${config.boardName}"`);
         updateSetupState();
@@ -155,32 +170,61 @@ export async function activate(context: vscode.ExtensionContext) {
           card = pick.card;
         }
 
-        const confirm = await vscode.window.showInformationMessage(
-          `Run Claude Code agent on "${card.name}"?`,
-          'Run',
-          'Cancel',
-        );
-        if (confirm !== 'Run') return;
-
         const runner = new AgentRunner(api, config, outputPanel);
 
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: `Agent running: ${card.name}`,
-            cancellable: false,
-          },
-          async () => {
-            const result = await runner.run(card!);
-            if (result.success) {
-              const secs = Math.round(result.duration / 1000);
-              vscode.window.showInformationMessage(
-                `Agent completed "${card!.name}" in ${secs}s`,
-              );
+        // Pre-check: see if task is already implemented
+        outputPanel.logAgent(card.name, 'Running pre-check...');
+        const preCheckResult = await runner.preCheck(card);
+
+        if (preCheckResult) {
+          outputPanel.logAgent(card.name, `Pre-check found:\n${preCheckResult}`);
+
+          const action = await vscode.window.showWarningMessage(
+            `"${card.name}" may already be implemented:\n\n${preCheckResult.substring(0, 300)}`,
+            { modal: true },
+            'Run Anyway',
+            'Skip to Review',
+            'Cancel',
+          );
+
+          if (action === 'Cancel' || !action) return;
+
+          if (action === 'Skip to Review') {
+            // Move card directly to review
+            if (config.lists.review) {
+              await api.moveCard(card.id, config.lists.review);
+              outputPanel.logAgent(card.name, 'Skipped to Review');
               await treeProvider.refresh();
+              updateRunningUI();
             }
-          },
-        );
+            return;
+          }
+          // 'Run Anyway' — continue below
+        } else {
+          const confirm = await vscode.window.showInformationMessage(
+            `Run Claude Code agent on "${card.name}"?`,
+            'Run',
+            'Cancel',
+          );
+          if (confirm !== 'Run') return;
+        }
+
+        treeProvider.setCardRunning(card.id, true);
+        updateRunningUI();
+
+        try {
+          const result = await runner.run(card!);
+          if (result.success) {
+            const secs = Math.round(result.duration / 1000);
+            vscode.window.showInformationMessage(
+              `Agent completed "${card!.name}" in ${secs}s`,
+            );
+            await treeProvider.refresh();
+          }
+        } finally {
+          treeProvider.setCardRunning(card.id, false);
+          updateRunningUI();
+        }
       } catch (err: any) {
         vscode.window.showErrorMessage(`Agent failed: ${err.message}`);
         outputPanel.logError(`Agent failed: ${err.message}`);
@@ -216,7 +260,15 @@ export async function activate(context: vscode.ExtensionContext) {
         if (confirm !== 'Review') return;
 
         const runner = new AgentRunner(api, config, outputPanel);
-        await runner.review(card);
+        treeProvider.setCardRunning(card.id, true);
+        updateRunningUI();
+
+        try {
+          await runner.review(card);
+        } finally {
+          treeProvider.setCardRunning(card.id, false);
+          updateRunningUI();
+        }
       } catch (err: any) {
         vscode.window.showErrorMessage(`Review failed: ${err.message}`);
         outputPanel.logError(`Review failed: ${err.message}`);
@@ -252,7 +304,15 @@ export async function activate(context: vscode.ExtensionContext) {
         if (confirm !== 'Run QA') return;
 
         const runner = new AgentRunner(api, config, outputPanel);
-        await runner.qa(card);
+        treeProvider.setCardRunning(card.id, true);
+        updateRunningUI();
+
+        try {
+          await runner.qa(card);
+        } finally {
+          treeProvider.setCardRunning(card.id, false);
+          updateRunningUI();
+        }
       } catch (err: any) {
         vscode.window.showErrorMessage(`QA failed: ${err.message}`);
         outputPanel.logError(`QA failed: ${err.message}`);
@@ -306,22 +366,161 @@ export async function activate(context: vscode.ExtensionContext) {
                   message: `(${i + 1}/${cards.length}) ${cards[i].name}`,
                   increment: 100 / cards.length,
                 });
-                await runner.run(cards[i]);
+                treeProvider.setCardRunning(cards[i].id, true);
+                updateRunningUI();
+                try {
+                  await runner.run(cards[i]);
+                } finally {
+                  treeProvider.setCardRunning(cards[i].id, false);
+                  updateRunningUI();
+                }
               }
             } else {
               const concurrency = modeChoice.mode === 'parallel-2' ? 2 : 3;
-              await runner.runParallel(cards, concurrency);
+              // Mark all as running for parallel
+              cards.forEach((c) => treeProvider.setCardRunning(c.id, true));
+              updateRunningUI();
+              try {
+                await runner.runParallel(cards, concurrency);
+              } finally {
+                cards.forEach((c) => treeProvider.setCardRunning(c.id, false));
+                updateRunningUI();
+              }
             }
 
             vscode.window.showInformationMessage(
               `All ${cards.length} cards processed!`,
             );
             await treeProvider.refresh();
+            updateRunningUI();
           },
         );
       } catch (err: any) {
         vscode.window.showErrorMessage(`Run all failed: ${err.message}`);
         outputPanel.logError(`Run all failed: ${err.message}`);
+      }
+    }),
+  );
+
+  // Register Trello Webhook
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.registerWebhook', async () => {
+      try {
+        const creds = await ensureCredentials();
+        const api = new TrelloApi(creds);
+        const mapper = new WorkspaceMapper(api);
+        const config = mapper.loadConfig();
+
+        if (!config) {
+          vscode.window.showWarningMessage('Run Setup first to connect a Trello board.');
+          return;
+        }
+
+        const callbackUrl = await vscode.window.showInputBox({
+          prompt: 'Enter the callback URL for the webhook (e.g. API Gateway endpoint)',
+          placeHolder: 'https://your-api.example.com/webhook/trello',
+          value: config.webhookCallbackUrl || '',
+        });
+        if (!callbackUrl) return;
+
+        const result = await api.createWebhook(callbackUrl, config.boardId, 'Trello Code Pilot automation');
+        config.webhookCallbackUrl = callbackUrl;
+        await mapper.saveConfig(config);
+
+        vscode.window.showInformationMessage(`Webhook registered (ID: ${result.id})`);
+        outputPanel.logInfo(`Webhook registered: ${result.id} -> ${callbackUrl}`);
+      } catch (err: unknown) {
+        vscode.window.showErrorMessage(`Webhook registration failed: ${(err as Error).message}`);
+      }
+    }),
+  );
+
+  // Manage Webhooks
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.manageWebhooks', async () => {
+      try {
+        const creds = await ensureCredentials();
+        const api = new TrelloApi(creds);
+
+        const webhooks = await api.listWebhooks();
+        if (!webhooks.length) {
+          vscode.window.showInformationMessage('No webhooks registered.');
+          return;
+        }
+
+        const pick = await vscode.window.showQuickPick(
+          webhooks.map((wh) => ({
+            label: wh.description || wh.id,
+            description: wh.callbackURL,
+            detail: `Active: ${wh.active} | Model: ${wh.idModel}`,
+            webhook: wh,
+          })),
+          { placeHolder: 'Select a webhook to delete' },
+        );
+        if (!pick) return;
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete webhook "${pick.label}"?`,
+          { modal: true },
+          'Delete',
+        );
+        if (confirm !== 'Delete') return;
+
+        await api.deleteWebhook(pick.webhook.id);
+        vscode.window.showInformationMessage('Webhook deleted.');
+        outputPanel.logInfo(`Webhook deleted: ${pick.webhook.id}`);
+      } catch (err: unknown) {
+        vscode.window.showErrorMessage(`Manage webhooks failed: ${(err as Error).message}`);
+      }
+    }),
+  );
+
+  // Configure Slack
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.configureSlack', async () => {
+      try {
+        const creds = await ensureCredentials();
+        const api = new TrelloApi(creds);
+        const mapper = new WorkspaceMapper(api);
+        const config = mapper.loadConfig();
+
+        if (!config) {
+          vscode.window.showWarningMessage('Run Setup first to connect a Trello board.');
+          return;
+        }
+
+        const slackUrl = await vscode.window.showInputBox({
+          prompt: 'Enter your Slack Incoming Webhook URL',
+          placeHolder: 'https://hooks.slack.com/services/T.../B.../...',
+          value: config.slackWebhookUrl || '',
+        });
+        if (!slackUrl) return;
+
+        // Test the webhook
+        try {
+          const res = await fetch(slackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: 'Trello Code Pilot connected successfully!' }),
+          });
+          if (!res.ok) {
+            throw new Error(`Slack responded with ${res.status}`);
+          }
+        } catch (testErr: unknown) {
+          const proceed = await vscode.window.showWarningMessage(
+            `Slack test failed: ${(testErr as Error).message}. Save anyway?`,
+            'Save', 'Cancel',
+          );
+          if (proceed !== 'Save') return;
+        }
+
+        config.slackWebhookUrl = slackUrl;
+        await mapper.saveConfig(config);
+
+        vscode.window.showInformationMessage('Slack webhook configured and tested.');
+        outputPanel.logInfo('Slack webhook configured');
+      } catch (err: unknown) {
+        vscode.window.showErrorMessage(`Slack configuration failed: ${(err as Error).message}`);
       }
     }),
   );
@@ -415,7 +614,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
-  const treeView = vscode.window.createTreeView('trelloPilot.cards', {
+  treeView = vscode.window.createTreeView('trelloPilot.cards', {
     treeDataProvider: treeProvider,
     showCollapseAll: true,
   });
@@ -427,7 +626,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const mapper = new WorkspaceMapper(api);
     if (mapper.loadConfig()) {
       treeProvider.refresh().then(() => {
-        setupWebview.updateCounts(treeProvider.getCounts());
+        updateRunningUI();
       });
     }
   }
@@ -445,7 +644,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       treeProvider.updateConfig(config);
       await treeProvider.refresh();
-      setupWebview.updateCounts(treeProvider.getCounts());
+      updateRunningUI();
     } catch {
       // Silent fail on auto-sync
     }

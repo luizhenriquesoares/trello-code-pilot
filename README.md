@@ -1,6 +1,6 @@
 # Trello Code Pilot
 
-> Turn Trello cards into code with a full AI-powered CI pipeline — implement, review, test, and merge — all from VS Code.
+> Turn Trello cards into code with a full AI-powered CI pipeline — implement, review, test, and merge — all from VS Code. Supports local execution and headless server automation via SQS.
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/LuizHenriqueSoares.trello-code-pilot)](https://marketplace.visualstudio.com/items?itemName=LuizHenriqueSoares.trello-code-pilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -11,11 +11,11 @@
 
 Trello Code Pilot connects your Trello board to your codebase and runs a full AI pipeline on each card:
 
-1. **Implement** — Claude Code reads the card, creates a branch, and writes the code
-2. **Review** — An AI reviewer analyzes the diff for bugs, security issues, and rule violations
-3. **QA** — Runs tests, validates compilation, and if everything passes, merges to main and pushes
-
-You click a button. The AI does the rest.
+1. **Estimate** — Quick complexity analysis (S/M/L/XL) before starting
+2. **Implement** — Claude Code reads the card, creates a branch, writes code, pushes, and creates a PR
+3. **Review** — AI reviewer analyzes the PR diff for bugs, security issues, and rule violations
+4. **QA** — Runs tests, validates compilation, merges PR to main via squash merge
+5. **Comment** — Every stage posts updates to the Trello card like a human teammate
 
 ---
 
@@ -25,29 +25,47 @@ You click a button. The AI does the rest.
   Todo          Doing         Review          QA            Done
 ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
 │  ✏ Card  │──▶│  ▶ Code │──▶│  🔍 Scan │──▶│  🧪 Test │──▶│  ✓ Ship │
-│         │   │         │   │  Bugs   │   │  Build  │   │  Merge  │
-│         │   │  Branch │   │  SOLID  │   │  Lint   │   │  Push   │
-│         │   │  Commit │   │  Rules  │   │  Merge  │   │         │
+│         │   │  Branch │   │  PR     │   │  Build  │   │  Merge  │
+│ Estimate│   │  Commit │   │  Bugs   │   │  Lint   │   │  Push   │
+│  S/M/L  │   │  PR     │   │  Rules  │   │  Merge  │   │  Done!  │
 └─────────┘   └─────────┘   └─────────┘   └─────────┘   └─────────┘
+     │              │              │              │              │
+     └──── Trello comments at each stage ────────┘              │
+                                                                │
+                    ┌── Rollback on failure ─────────────────────┘
 ```
-
-Each stage opens Claude Code in an interactive IDE terminal, so you can watch and intervene at any point.
 
 ---
 
 ## Features
 
-- **Full CI pipeline** — Todo → Doing → Review → QA → Done, each with its own AI agent
-- **Project rules** — Define coding standards in `.trello-pilot.json` and they're enforced automatically
-- **Pipeline dashboard** — Visual card counters per stage in the sidebar
-- **Card detail view** — Click any card to see full description, checklists, labels, and attachments
-- **Smart icons** — Each pipeline stage has its own icon (inbox, play, search, beaker, check)
-- **Auto branch** — Creates `feat/card-name` branches automatically
-- **Auto card movement** — Moves cards through your workflow on Trello
-- **Auto-sync** — Refreshes from Trello every 5 minutes
-- **Claude Code integration** — Opens in the IDE terminal via `claude-vscode.terminal.open`
-- **Rich card info** — Labels, due dates, checklists progress, overdue warnings
-- **Credential fallback** — Stores API keys in SecretStorage + config file as backup
+### Core Pipeline
+- **Full CI pipeline** — Todo → Doing → Review → QA → Done, fully automated
+- **PR integration** — Creates GitHub PR on implementation, reviews the actual PR, merges via squash
+- **Trello comments** — Posts human-readable updates at each stage (branch, PR link, duration, cost)
+- **Pre-check** — Analyzes codebase and commits to detect if task is already implemented
+- **Complexity estimation** — Quick S/M/L/XL sizing before starting work
+- **Auto card movement** — Moves cards through pipeline stages automatically
+
+### Multi-Project Support
+- **Multiple project lists** — One board with Portal B2B, MilhasNexus, Site American, etc.
+- **Shared pipeline** — Single Doing/Review/QA/Done lists for all projects
+- **Origin tracking** — Remembers which project a card came from
+- **Per-project repo** — Different git repos per project list (for server automation)
+
+### UI & Monitoring
+- **Running indicators** — Animated spinner on cards being processed
+- **Tree view badge** — Shows running count on the sidebar tab
+- **Pipeline dashboard** — Visual card counters per stage in the setup panel
+- **Running banner** — Pulsing blue banner when agents are active
+- **Real-time progress** — Stream-JSON parsing shows Claude's actions live in terminal
+- **Card detail view** — Full description, checklists, labels, attachments
+
+### Automation & Integration
+- **Trello Webhooks** — Register webhooks to trigger pipeline on card creation/movement
+- **Slack notifications** — Notify team on each pipeline stage completion
+- **Headless worker** — Server-side execution via SQS + Docker (for full automation)
+- **Cost tracking** — Tracks API cost per card, posts summary to Trello
 
 ---
 
@@ -55,35 +73,44 @@ Each stage opens Claude Code in an interactive IDE terminal, so you can watch an
 
 ### 1. Install
 
-Search for **"Trello Code Pilot"** in the VS Code Extensions tab (`Cmd+Shift+X` / `Ctrl+Shift+X`).
+Search for **"Trello Code Pilot"** in the VS Code Extensions tab (`Cmd+Shift+X`).
 
-Or via CLI:
-
+Or install from VSIX:
 ```bash
-code --install-extension LuizHenriqueSoares.trello-code-pilot
+code --install-extension trello-code-pilot-1.0.0.vsix
 ```
 
 ### 2. Get Trello API Credentials
 
 1. Go to [trello.com/power-ups/admin](https://trello.com/power-ups/admin)
-2. Create a new Power-Up (or use an existing one)
-3. Copy your **API Key**
-4. Generate a **Token** from the API key page
+2. Create a new Power-Up and copy your **API Key**
+3. Generate a **Token** via the authorization link
 
 ### 3. Configure
 
 1. `Cmd+Shift+P` → **Trello Code Pilot: Set Trello API Credentials**
 2. Enter your API Key and Token
 3. `Cmd+Shift+P` → **Trello Code Pilot: Setup Board Connection**
-4. Select your board and map your lists (Todo, Doing, Done, Review, QA)
+4. Choose single-project or multi-project mode
+5. Map your lists (Todo, Doing, Done, Review, QA)
 
-This creates a `.trello-pilot.json` in your project:
+### 4. Requirements
+
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- Node.js 18+
+- [GitHub CLI](https://cli.github.com/) (`gh`) for PR operations
+- A Trello account with API access
+
+---
+
+## Configuration
+
+### `.trello-pilot.json`
 
 ```json
 {
   "boardId": "abc123",
-  "boardUrl": "https://trello.com/b/abc123/my-project",
-  "boardName": "My Project",
+  "boardName": "Projetos 2026",
   "lists": {
     "todo": "list-id-1",
     "doing": "list-id-2",
@@ -91,52 +118,28 @@ This creates a `.trello-pilot.json` in your project:
     "review": "list-id-4",
     "qa": "list-id-5"
   },
+  "projectLists": [
+    { "id": "list-id-1", "name": "Portal B2B" },
+    { "id": "list-id-6", "name": "MilhasNexus", "repoUrl": "git@github.com:org/nexus.git" }
+  ],
+  "credentials": {
+    "key": "your-api-key",
+    "token": "your-token"
+  },
   "rules": [
-    "Follow Clean Architecture: domain → application → infrastructure → presentation",
-    "Never use 'any' in TypeScript — use proper interfaces/types",
+    "Follow Clean Architecture: domain → application → infrastructure",
+    "Never use 'any' in TypeScript",
     "Apply SOLID principles",
-    "Commit with clear, concise message in English"
-  ]
+    "Commit with clear message in English"
+  ],
+  "slackWebhookUrl": "https://hooks.slack.com/services/...",
+  "webhookCallbackUrl": "https://your-api.example.com/webhook"
 }
 ```
 
-### 4. Requirements
+### Project Rules
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- [Claude Code VS Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) installed
-- Node.js 18+
-- A Trello account with API access
-
----
-
-## Usage
-
-### Pipeline actions
-
-| List | Button | What happens |
-|------|--------|-------------|
-| **Todo** | ▶ Play | Creates branch, opens Claude Code to implement the task |
-| **Doing** | ▶ Play | Continues implementation |
-| **Review** | 🔍 Search | Opens Claude Code to review: bugs, security, SOLID, rules compliance |
-| **QA** | 🧪 Beaker | Runs tests, validates build, merges to main & pushes if all pass |
-
-### Card detail
-
-Click any card in the sidebar to open a detail view with description, checklists, labels, and attachments.
-
-### Sync cards
-
-Click the **sync icon** (↻) in the sidebar header. Cards auto-sync every 5 minutes.
-
-### Run all cards
-
-Click the **run-all icon** in the sidebar header. Choose sequential or parallel execution.
-
----
-
-## Project Rules
-
-Define rules in `.trello-pilot.json` under the `rules` array. These are injected into every agent prompt:
+Rules are injected into every agent prompt and enforced during review:
 
 ```json
 {
@@ -144,71 +147,159 @@ Define rules in `.trello-pilot.json` under the `rules` array. These are injected
     "## Backend (NestJS)",
     "Use cases must have a single execute() method",
     "Repositories: interface in application/ports/, implementation in infrastructure/",
-    "Throw domain-specific errors extending DomainError",
 
     "## Frontend (React)",
     "Use b2bFetch() from lib/b2b-api.ts — never use fetch() directly",
     "Style with Tailwind CSS + Radix UI components",
-    "Use useToast() for error feedback",
 
     "## General",
-    "Never use 'any' in TypeScript",
-    "Apply SOLID principles",
-    "Use constants for fixed values — no magic numbers"
+    "TypeScript strict: no 'any', proper interfaces",
+    "SOLID principles everywhere"
   ]
 }
 ```
 
-Rules are enforced during implementation and validated during review.
-
----
-
-## How Each Agent Works
-
-### Implement Agent (▶ Play)
-
-1. Moves card to "Doing" on Trello
-2. Creates a `feat/card-name` branch
-3. Builds a prompt from card title, description, checklists, attachments, and project rules
-4. Opens Claude Code in the IDE terminal
-
-### Review Agent (🔍 Search)
-
-1. Switches to the card's branch
-2. Runs `git diff main...HEAD` to see all changes
-3. Analyzes for: bugs, security issues, SOLID violations, project rules compliance, dead code
-4. Fixes issues directly and commits, or reports "Review passed"
-
-### QA Agent (🧪 Beaker)
-
-1. Switches to the card's branch
-2. Runs `npx tsc --noEmit` to validate compilation
-3. Runs test suite if it exists
-4. Checks for console.log, unused imports, lint errors
-5. If all checks pass: merges to main and pushes
-6. If checks fail: fixes and retries, or reports failures
-
----
-
-## Settings
+### VS Code Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `trelloPilot.claudeCodePath` | `claude` | Path to Claude Code CLI |
 | `trelloPilot.autoMoveCard` | `true` | Auto-move cards between lists |
 | `trelloPilot.createBranch` | `true` | Create git branch per card |
-| `trelloPilot.branchPrefix` | `feat/` | Branch prefix (`feat/`, `fix/`, `chore/`) |
+| `trelloPilot.branchPrefix` | `feat/` | Branch prefix |
 
 ---
 
-## Development
+## How Each Agent Works
+
+### Pre-Check (before Play)
+- Checks if branch already exists with commits
+- Searches recent commits for keywords from card name
+- Checks if remote branch/PR exists
+- Shows dialog: Run Anyway / Skip to Review / Cancel
+
+### Implement Agent (▶ Play)
+1. Estimates complexity (S/M/L/XL) and comments on Trello
+2. Saves origin project list for tracking
+3. Moves card to "Doing"
+4. Creates `feat/card-name` branch
+5. Opens Claude Code in terminal with `-p` mode and `--permission-mode bypassPermissions`
+6. On completion: pushes, creates PR via `gh pr create`, comments on Trello, moves to Review
+
+### Review Agent (🔍 Review)
+1. Finds the card's branch (exact, fuzzy, or manual pick)
+2. Finds existing PR URL
+3. Comments on Trello: "Code Review started"
+4. Opens Claude Code with review prompt (includes PR URL)
+5. Claude reviews: bugs, security, SOLID, rules compliance, completeness
+6. Fixes issues directly, commits, pushes
+7. Comments on Trello: "Code Review complete", moves to QA
+
+### QA Agent (🧪 QA)
+1. Finds the card's branch
+2. Comments on Trello: "QA started"
+3. Opens Claude Code with QA prompt
+4. Claude runs: `tsc --noEmit`, tests, lint, validates requirements
+5. If pass: merges PR via `gh pr merge --squash --delete-branch`
+6. Comments on Trello: "QA complete. PR merged. Task Done."
+7. Moves card to Done, cleans up origin tracking
+
+---
+
+## Server Automation (Headless Worker)
+
+For fully automated execution without VS Code:
+
+### Architecture
+
+```
+Trello Webhook → API Gateway → Lambda → SQS → Worker (ECS Fargate)
+                                                  │
+                                                  ├── Clone repo
+                                                  ├── claude -p --dangerously-skip-permissions
+                                                  ├── Push + PR
+                                                  ├── Comment on Trello
+                                                  ├── Notify Slack
+                                                  └── Move card → next stage
+```
+
+### Worker Setup
 
 ```bash
-git clone https://github.com/luizhenriquesoares/trello-code-pilot.git
-cd trello-code-pilot
+cd worker
 npm install
-npm run watch
-# Press F5 in VS Code to launch Extension Development Host
+npm run build
+```
+
+### Docker
+
+```bash
+docker build -t trello-pilot-worker -f worker/Dockerfile .
+docker run -e ANTHROPIC_API_KEY=... -e GH_TOKEN=... trello-pilot-worker
+```
+
+### AWS Infrastructure (CDK)
+
+```bash
+cd infra
+npm install
+npx cdk deploy
+```
+
+Creates: SQS queue, ECS Fargate cluster, Lambda webhook handler, API Gateway, Secrets Manager, ECR repository.
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude API key |
+| `GH_TOKEN` | GitHub personal access token |
+| `TRELLO_KEY` | Trello API key |
+| `TRELLO_TOKEN` | Trello API token |
+| `SQS_QUEUE_URL` | AWS SQS queue URL |
+| `SLACK_WEBHOOK_URL` | Slack incoming webhook (optional) |
+
+---
+
+## Project Structure
+
+```
+trello-code-pilot/
+├── src/                    # VS Code extension
+│   ├── claude/
+│   │   ├── agent-runner.ts    # Pipeline orchestration (run, review, qa)
+│   │   └── prompt-builder.ts  # Prompt generation per stage
+│   ├── trello/
+│   │   ├── api.ts             # Trello REST API client
+│   │   ├── mapper.ts          # Config + origin tracking
+│   │   └── types.ts           # TypeScript interfaces
+│   ├── views/
+│   │   ├── sidebar.ts         # Tree view (cards, lists, running state)
+│   │   ├── setup-webview.ts   # Setup panel + pipeline dashboard
+│   │   └── output-panel.ts    # Logging
+│   ├── config/
+│   │   └── credentials.ts     # SecretStorage + file fallback
+│   └── extension.ts           # Command registration + lifecycle
+├── worker/                 # Headless worker service
+│   ├── src/
+│   │   ├── claude/            # Headless Claude runner + cost parser
+│   │   ├── pipeline/          # Orchestrator + stages (implement, review, qa)
+│   │   ├── git/               # Repo cloning, branching, PR operations
+│   │   ├── github/            # PR review comments
+│   │   ├── notifications/     # Slack + Trello commenting
+│   │   ├── analysis/          # Complexity estimator
+│   │   ├── cost/              # Cost tracker
+│   │   ├── sqs/               # SQS consumer
+│   │   └── trello/            # Standalone Trello API (no VS Code deps)
+│   ├── Dockerfile
+│   └── package.json
+├── infra/                  # AWS CDK infrastructure
+│   ├── lib/                   # CDK stack (SQS, ECS, Lambda, API GW)
+│   ├── lambda/                # Webhook handler + signature verifier
+│   └── package.json
+├── shared/                 # Shared types (extension + worker)
+│   └── types/                 # PipelineStage, WorkerEvent, RepoConfig
+└── docker-compose.yml      # Local development with LocalStack
 ```
 
 ---
@@ -218,20 +309,26 @@ npm run watch
 - [x] Full CI pipeline (Implement → Review → QA → Merge)
 - [x] Project rules enforcement
 - [x] Pipeline dashboard with card counts
-- [x] Card detail webview
-- [x] Auto-sync every 5 minutes
-- [x] Claude Code IDE terminal integration
+- [x] PR creation and merge via `gh` CLI
+- [x] Trello comments at each stage
+- [x] Multi-project board support
+- [x] Complexity estimation (S/M/L/XL)
+- [x] Pre-check for already-implemented tasks
+- [x] Running state indicators (spinner, badge, banner)
+- [x] Real-time progress in terminal (stream-json)
+- [x] Headless worker + Docker
+- [x] AWS CDK infrastructure (SQS, ECS, Lambda)
+- [x] Trello webhook management
+- [x] Slack notifications
+- [x] Cost tracking
+- [x] PR review comments on GitHub
+- [x] Rollback on QA failure
+- [ ] Railway deployment template
 - [ ] Filter cards by label, member, or due date
-- [ ] Custom prompt templates per label (e.g., "bug" vs "feature")
-- [ ] Status bar showing active agents
-- [ ] Webhook-based real-time sync (instead of polling)
+- [ ] Custom prompt templates per label
 - [ ] Support for Jira, Linear, GitHub Projects
 
 ---
-
-## Contributing
-
-Contributions are welcome! Feel free to open issues or submit PRs.
 
 ## License
 

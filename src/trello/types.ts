@@ -56,6 +56,9 @@ export interface TrelloCard {
   attachments?: TrelloAttachment[];
   listName?: string;
   boardName?: string;
+  /** Tracks which project list the card came from before entering the pipeline */
+  originListId?: string;
+  originListName?: string;
 }
 
 export interface TrelloMember {
@@ -75,6 +78,21 @@ export interface WorkspaceConfig {
     review?: string;
     qa?: string;
   };
+  /** Multiple project lists that feed into the shared pipeline */
+  projectLists?: ProjectList[];
   assignee?: string;
+  rules?: string[];
+  slackWebhookUrl?: string;
+  webhookCallbackUrl?: string;
+  costTrackingEnabled?: boolean;
+}
+
+export interface ProjectList {
+  id: string;
+  name: string;
+  repoUrl?: string;
+  baseBranch?: string;
+  workingDirectory?: string;
+  branchPrefix?: string;
   rules?: string[];
 }

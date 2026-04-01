@@ -8,6 +8,7 @@ export class CardTreeItem extends vscode.TreeItem {
     public readonly listName: string,
     public readonly isReviewCard: boolean = false,
     public readonly isQaCard: boolean = false,
+    public readonly isRunning: boolean = false,
   ) {
     super(card.name, vscode.TreeItemCollapsibleState.None);
 
@@ -20,11 +21,12 @@ export class CardTreeItem extends vscode.TreeItem {
       (labels ? `**Labels:** ${labels}\n\n` : '') +
       (dueStr ? `**${dueStr}**\n\n` : '') +
       (card.checklists?.length ? `**Checklists:** ${card.checklists.length}\n\n` : '') +
+      (isRunning ? `**Status:** Running...\n\n` : '') +
       `[Open in Trello](${card.url})`,
     );
     this.tooltip.isTrusted = true;
 
-    this.description = this.buildDescription();
+    this.description = isRunning ? 'Running...' : this.buildDescription();
     this.contextValue = isReviewCard ? 'reviewCard' : (isQaCard ? 'qaCard' : 'card');
 
     this.command = {
@@ -32,6 +34,12 @@ export class CardTreeItem extends vscode.TreeItem {
       title: 'Show Card Details',
       arguments: [this],
     };
+
+    // Running state: animated spinner
+    if (isRunning) {
+      this.iconPath = new vscode.ThemeIcon('loading~spin', new vscode.ThemeColor('textLink.foreground'));
+      return;
+    }
 
     // Icon based on labels
     if (card.due) {
@@ -112,9 +120,14 @@ export class ListTreeItem extends vscode.TreeItem {
     public readonly list: TrelloList,
     public readonly cards: TrelloCard[],
     listRole?: string,
+    runningCount: number = 0,
   ) {
     super(list.name, vscode.TreeItemCollapsibleState.Expanded);
-    this.description = `${cards.length} card${cards.length !== 1 ? 's' : ''}`;
+
+    const cardCount = `${cards.length} card${cards.length !== 1 ? 's' : ''}`;
+    this.description = runningCount > 0
+      ? `${cardCount} (${runningCount} running)`
+      : cardCount;
     this.contextValue = 'list';
 
     const iconMap: Record<string, [string, string]> = {
@@ -136,11 +149,25 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   private lists: TrelloList[] = [];
   private cards: TrelloCard[] = [];
+  private runningCardIds = new Set<string>();
 
   constructor(
     private api: TrelloApi,
     private config: WorkspaceConfig | undefined,
   ) {}
+
+  setCardRunning(cardId: string, running: boolean): void {
+    if (running) {
+      this.runningCardIds.add(cardId);
+    } else {
+      this.runningCardIds.delete(cardId);
+    }
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  getRunningCount(): number {
+    return this.runningCardIds.size;
+  }
 
   updateConfig(config: WorkspaceConfig) {
     this.config = config;
@@ -163,12 +190,13 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
       }),
     );
 
-    // Filter only the mapped lists (todo, doing, review)
+    // Filter only the mapped lists (project lists + pipeline)
     const relevantListIds = new Set([
       this.config.lists.todo,
       this.config.lists.doing,
       ...(this.config.lists.review ? [this.config.lists.review] : []),
       ...(this.config.lists.qa ? [this.config.lists.qa] : []),
+      ...(this.config.projectLists?.map((p) => p.id) || []),
     ]);
 
     this.lists = this.lists.filter((l) => relevantListIds.has(l.id));
@@ -183,6 +211,8 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   getListRole(listId: string): string | undefined {
     if (!this.config) return undefined;
+    // Check if it's a project list (acts as "todo")
+    if (this.config.projectLists?.some((p) => p.id === listId)) return 'todo';
     if (listId === this.config.lists.todo) return 'todo';
     if (listId === this.config.lists.doing) return 'doing';
     if (listId === this.config.lists.review) return 'review';
@@ -198,43 +228,62 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
         .map((list) => {
           const listCards = this.cards.filter((c) => c.idList === list.id);
           const role = this.getListRole(list.id);
-          return { list, listCards, role };
+          const runningInList = listCards.filter((c) => this.runningCardIds.has(c.id)).length;
+          return { list, listCards, role, runningInList };
         })
         .sort((a, b) => {
           const ai = pipelineOrder.indexOf(a.role || '');
           const bi = pipelineOrder.indexOf(b.role || '');
           return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         })
-        .map(({ list, listCards, role }) => new ListTreeItem(list, listCards, role));
+        .map(({ list, listCards, role, runningInList }) =>
+          new ListTreeItem(list, listCards, role, runningInList),
+        );
     }
 
     if (element instanceof ListTreeItem) {
       const role = this.getListRole(element.list.id);
       const isReview = role === 'review';
       const isQa = role === 'qa';
-      return element.cards.map((card) => new CardTreeItem(card, element.list.name, isReview, isQa));
+      return element.cards.map((card) =>
+        new CardTreeItem(card, element.list.name, isReview, isQa, this.runningCardIds.has(card.id)),
+      );
     }
 
     return [];
   }
 
-  getCounts(): { todo: number; doing: number; review: number; qa: number; done: number } {
-    if (!this.config) return { todo: 0, doing: 0, review: 0, qa: 0, done: 0 };
+  /** Get all list IDs that act as "todo" (project lists or single todo) */
+  private getTodoListIds(): string[] {
+    if (!this.config) return [];
+    if (this.config.projectLists?.length) {
+      return this.config.projectLists.map((p) => p.id);
+    }
+    return [this.config.lists.todo];
+  }
+
+  getCounts(): { todo: number; doing: number; review: number; qa: number; done: number; running: number } {
+    if (!this.config) return { todo: 0, doing: 0, review: 0, qa: 0, done: 0, running: 0 };
+    const todoIds = new Set(this.getTodoListIds());
     return {
-      todo: this.cards.filter((c) => c.idList === this.config!.lists.todo).length,
+      todo: this.cards.filter((c) => todoIds.has(c.idList)).length,
       doing: this.cards.filter((c) => c.idList === this.config!.lists.doing).length,
       review: this.cards.filter((c) => c.idList === this.config!.lists.review).length,
       qa: this.cards.filter((c) => c.idList === this.config!.lists.qa).length,
       done: this.cards.filter((c) => c.idList === this.config!.lists.done).length,
+      running: this.runningCardIds.size,
     };
   }
 
   getCardItems(): CardTreeItem[] {
     if (!this.config) return [];
 
-    const todoCards = this.cards.filter((c) => c.idList === this.config!.lists.todo);
-    const todoList = this.lists.find((l) => l.id === this.config!.lists.todo);
+    const todoIds = new Set(this.getTodoListIds());
+    const todoCards = this.cards.filter((c) => todoIds.has(c.idList));
 
-    return todoCards.map((card) => new CardTreeItem(card, todoList?.name || 'To Do'));
+    return todoCards.map((card) => {
+      const list = this.lists.find((l) => l.id === card.idList);
+      return new CardTreeItem(card, list?.name || 'To Do', false, false, this.runningCardIds.has(card.id));
+    });
   }
 }
