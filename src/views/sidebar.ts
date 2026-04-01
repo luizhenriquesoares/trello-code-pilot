@@ -149,6 +149,7 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
   private lists: TrelloList[] = [];
   private cards: TrelloCard[] = [];
+  private doneCount = 0;
   private runningCardIds = new Set<string>();
 
   constructor(
@@ -198,6 +199,11 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
       ...(this.config.lists.qa ? [this.config.lists.qa] : []),
       ...(this.config.projectLists?.map((p) => p.id) || []),
     ]);
+
+    // Count Done cards before filtering them out of the tree
+    this.doneCount = this.config.lists.done
+      ? allCards.filter((c) => c.idList === this.config!.lists.done).length
+      : 0;
 
     this.lists = this.lists.filter((l) => relevantListIds.has(l.id));
     this.cards = this.cards.filter((c) => relevantListIds.has(c.idList));
@@ -270,7 +276,7 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
       doing: this.cards.filter((c) => c.idList === this.config!.lists.doing).length,
       review: this.cards.filter((c) => c.idList === this.config!.lists.review).length,
       qa: this.cards.filter((c) => c.idList === this.config!.lists.qa).length,
-      done: this.cards.filter((c) => c.idList === this.config!.lists.done).length,
+      done: this.doneCount,
       running: this.runningCardIds.size,
     };
   }
