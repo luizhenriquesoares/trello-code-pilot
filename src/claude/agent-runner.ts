@@ -136,10 +136,7 @@ export class AgentRunner {
     const createBranch = settings.get<boolean>('createBranch', true);
     const branchPrefix = settings.get<string>('branchPrefix', 'feat/');
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
-      throw new Error('No workspace folder open');
-    }
+    const workspaceRoot = this.resolveWorkingDirectory(card);
 
     this.output.logSeparator();
     this.output.logAgent(card.name, 'Starting agent...');
@@ -153,12 +150,12 @@ export class AgentRunner {
       } catch { /* ignore */ }
     }
 
-    // Save origin project list + branch name before moving to pipeline
+    // Save origin project list + branch name + working directory before moving to pipeline
     const originListName = this.resolveOriginListName(card.idList);
     const plannedBranch = createBranch ? this.promptBuilder.buildBranchName(card, branchPrefix) : undefined;
     if (originListName) {
-      this.mapper.saveCardOrigin(card.id, card.idList, originListName, plannedBranch);
-      this.output.logAgent(card.name, `Origin project: ${originListName}`);
+      this.mapper.saveCardOrigin(card.id, card.idList, originListName, plannedBranch, workspaceRoot);
+      this.output.logAgent(card.name, `Origin project: ${originListName} (${workspaceRoot})`);
     }
 
     // Move card to "doing"
@@ -257,10 +254,7 @@ export class AgentRunner {
     const branchPrefix = settings.get<string>('branchPrefix', 'feat/');
     const autoMove = settings.get<boolean>('autoMoveCard', true);
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
-      throw new Error('No workspace folder open');
-    }
+    const workspaceRoot = this.resolveWorkingDirectory(card);
 
     this.output.logSeparator();
     this.output.logAgent(card.name, 'Starting code review...');
@@ -344,10 +338,7 @@ export class AgentRunner {
     const branchPrefix = settings.get<string>('branchPrefix', 'feat/');
     const autoMove = settings.get<boolean>('autoMoveCard', true);
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceRoot) {
-      throw new Error('No workspace folder open');
-    }
+    const workspaceRoot = this.resolveWorkingDirectory(card);
 
     this.output.logSeparator();
     this.output.logAgent(card.name, 'Starting QA...');
@@ -632,6 +623,43 @@ sys.stdout.flush()
     }
     if (listId === this.config.lists.todo) return 'Todo';
     return undefined;
+  }
+
+  /**
+   * Resolve the working directory for a card based on its project list.
+   * Cards in pipeline lists (Doing/Review/QA) use the saved origin to find the project.
+   */
+  private resolveWorkingDirectory(card: TrelloCard): string {
+    const defaultDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+
+    // Check if card is in a project list directly
+    if (this.config.projectLists?.length) {
+      const project = this.config.projectLists.find((p) => p.id === card.idList);
+      if (project?.workingDirectory) {
+        this.output.logAgent(card.name, `Project: ${project.name} → ${project.workingDirectory}`);
+        return project.workingDirectory;
+      }
+    }
+
+    // Card is in pipeline (Doing/Review/QA) — check origin tracking
+    const origin = this.mapper.getCardOrigin(card.id);
+    if (origin) {
+      // First try the saved working directory
+      if (origin.workingDirectory) {
+        this.output.logAgent(card.name, `Project (from origin): ${origin.listName} → ${origin.workingDirectory}`);
+        return origin.workingDirectory;
+      }
+      // Then try the project list config
+      if (this.config.projectLists?.length) {
+        const project = this.config.projectLists.find((p) => p.id === origin.listId);
+        if (project?.workingDirectory) {
+          this.output.logAgent(card.name, `Project (from config): ${project.name} → ${project.workingDirectory}`);
+          return project.workingDirectory;
+        }
+      }
+    }
+
+    return defaultDir;
   }
 
   private execGit(cwd: string, args: string[]): Promise<string> {

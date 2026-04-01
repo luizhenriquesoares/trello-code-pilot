@@ -38,21 +38,21 @@ export class WorkspaceMapper {
   }
 
   /** Save card origin (which project list it came from) */
-  saveCardOrigin(cardId: string, listId: string, listName: string, branchName?: string): void {
+  saveCardOrigin(cardId: string, listId: string, listName: string, branchName?: string, workingDirectory?: string): void {
     const originsPath = this.getOriginsPath();
     if (!originsPath) return;
 
     const origins = this.loadOrigins();
-    origins[cardId] = { listId, listName, movedAt: new Date().toISOString(), branchName };
+    origins[cardId] = { listId, listName, movedAt: new Date().toISOString(), branchName, workingDirectory };
     fs.writeFileSync(originsPath, JSON.stringify(origins, null, 2) + '\n', 'utf-8');
   }
 
   /** Get card origin */
-  getCardOrigin(cardId: string): { listId: string; listName: string; branchName?: string } | undefined {
+  getCardOrigin(cardId: string): { listId: string; listName: string; branchName?: string; workingDirectory?: string } | undefined {
     const origins = this.loadOrigins();
     const origin = origins[cardId];
     if (!origin) return undefined;
-    return { listId: origin.listId, listName: origin.listName, branchName: origin.branchName };
+    return { listId: origin.listId, listName: origin.listName, branchName: origin.branchName, workingDirectory: origin.workingDirectory };
   }
 
   /** Remove card origin (when card is done/back to project) */
@@ -65,7 +65,7 @@ export class WorkspaceMapper {
     fs.writeFileSync(originsPath, JSON.stringify(origins, null, 2) + '\n', 'utf-8');
   }
 
-  private loadOrigins(): Record<string, { listId: string; listName: string; movedAt: string; branchName?: string }> {
+  private loadOrigins(): Record<string, { listId: string; listName: string; movedAt: string; branchName?: string; workingDirectory?: string }> {
     const originsPath = this.getOriginsPath();
     if (!originsPath || !fs.existsSync(originsPath)) return {};
     try {
