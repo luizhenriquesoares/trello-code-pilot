@@ -42,6 +42,7 @@ export interface TrelloAttachment {
 
 export interface TrelloCard {
   id: string;
+  idShort: number;
   name: string;
   desc: string;
   url: string;

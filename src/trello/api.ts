@@ -60,7 +60,7 @@ export class TrelloApi {
 
   async getBoardCards(boardId: string): Promise<TrelloCard[]> {
     return this.request<TrelloCard[]>(`/boards/${boardId}/cards`, {
-      fields: 'name,desc,url,shortUrl,idList,idBoard,labels,due,dueComplete,idMembers',
+      fields: 'name,desc,url,shortUrl,idShort,idList,idBoard,labels,due,dueComplete,idMembers',
       attachments: 'true',
       checklists: 'all',
     });
@@ -68,7 +68,7 @@ export class TrelloApi {
 
   async getCard(cardId: string): Promise<TrelloCard> {
     return this.request<TrelloCard>(`/cards/${cardId}`, {
-      fields: 'name,desc,url,shortUrl,idList,idBoard,labels,due,dueComplete,idMembers',
+      fields: 'name,desc,url,shortUrl,idShort,idList,idBoard,labels,due,dueComplete,idMembers',
       attachments: 'true',
     });
   }
