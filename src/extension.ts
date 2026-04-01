@@ -109,10 +109,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         treeProvider.updateConfig(config);
         await treeProvider.refresh();
+        setupWebview.updateCounts(treeProvider.getCounts());
 
         outputPanel.logInfo(`Synced cards from "${config.boardName}"`);
         updateSetupState();
-        vscode.window.showInformationMessage('Trello cards synced');
       } catch (err: any) {
         vscode.window.showErrorMessage(`Sync failed: ${err.message}`);
         outputPanel.logError(`Sync failed: ${err.message}`);
@@ -335,6 +335,73 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  // Show Card Detail
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.showCard', (item?: CardTreeItem) => {
+      if (!item?.card) return;
+      const card = item.card;
+
+      const panel = vscode.window.createWebviewPanel(
+        'trelloPilotCard',
+        card.name.substring(0, 40),
+        vscode.ViewColumn.One,
+        { enableScripts: false },
+      );
+
+      const labels = card.labels?.map((l) =>
+        `<span class="label" style="background:${l.color || '#666'}">${l.name || l.color}</span>`
+      ).join(' ') || '';
+
+      const dueHtml = card.due
+        ? `<p class="meta"><strong>Due:</strong> ${new Date(card.due).toLocaleDateString()}${card.dueComplete ? ' (done)' : ''}</p>`
+        : '';
+
+      const checklistsHtml = card.checklists?.map((cl) => {
+        const items = cl.checkItems.map((i) =>
+          `<li class="${i.state === 'complete' ? 'done' : ''}">${i.state === 'complete' ? '&#10003;' : '&#9744;'} ${i.name}</li>`
+        ).join('');
+        const done = cl.checkItems.filter((i) => i.state === 'complete').length;
+        const total = cl.checkItems.length;
+        return `<div class="checklist"><h3>${cl.name} <span class="count">${done}/${total}</span></h3><ul>${items}</ul></div>`;
+      }).join('') || '';
+
+      const attachHtml = card.attachments?.map((a) =>
+        `<li><a href="${a.url}">${a.name}</a></li>`
+      ).join('') || '';
+
+      panel.webview.html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body { font-family: var(--vscode-font-family, sans-serif); padding: 20px; color: #ccc; background: #1e1e1e; line-height: 1.6; }
+  h1 { font-size: 18px; margin-bottom: 12px; color: #fff; }
+  h3 { font-size: 14px; color: #ddd; margin: 12px 0 6px; }
+  .meta { font-size: 12px; color: #999; margin: 4px 0; }
+  .label { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; color: #fff; margin-right: 4px; }
+  .desc { margin: 16px 0; padding: 12px; background: #2d2d2d; border-radius: 6px; font-size: 13px; white-space: pre-wrap; }
+  .checklist { margin: 12px 0; }
+  .checklist ul { list-style: none; padding: 0; }
+  .checklist li { padding: 4px 0; font-size: 13px; }
+  .checklist li.done { color: #28a745; text-decoration: line-through; opacity: 0.7; }
+  .count { font-size: 11px; color: #888; font-weight: normal; }
+  .section { margin: 16px 0; }
+  .section h3 { border-bottom: 1px solid #333; padding-bottom: 4px; }
+  .section ul { padding-left: 16px; }
+  .section li { font-size: 13px; padding: 2px 0; }
+  a { color: #4fc1ff; }
+  .open-trello { display: inline-block; margin-top: 16px; padding: 6px 16px; background: #0079bf; color: #fff; text-decoration: none; border-radius: 4px; font-size: 12px; }
+</style></head><body>
+  <h1>${card.name}</h1>
+  ${labels ? `<p>${labels}</p>` : ''}
+  ${dueHtml}
+  <p class="meta"><strong>List:</strong> ${item.listName}</p>
+  ${card.desc ? `<div class="desc">${card.desc}</div>` : ''}
+  ${checklistsHtml ? `<div class="section"><h3>Checklists</h3>${checklistsHtml}</div>` : ''}
+  ${attachHtml ? `<div class="section"><h3>Attachments</h3><ul>${attachHtml}</ul></div>` : ''}
+  <a class="open-trello" href="${card.url}">Open in Trello</a>
+</body></html>`;
+    }),
+  );
+
   // Initialize tree view
   if (credentials) {
     const api = new TrelloApi(credentials);
@@ -354,14 +421,37 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
-  // Auto-sync on activation
+  // Auto-sync on activation + update pipeline counts
   if (credentials) {
     const api = new TrelloApi(credentials);
     const mapper = new WorkspaceMapper(api);
     if (mapper.loadConfig()) {
-      treeProvider.refresh();
+      treeProvider.refresh().then(() => {
+        setupWebview.updateCounts(treeProvider.getCounts());
+      });
     }
   }
+
+  // Auto-sync every 5 minutes
+  const AUTO_SYNC_INTERVAL = 5 * 60 * 1000;
+  const autoSyncTimer = setInterval(async () => {
+    try {
+      const creds = await credentialStore.getCredentials();
+      if (!creds) return;
+      const api = new TrelloApi(creds);
+      const mapper = new WorkspaceMapper(api);
+      const config = mapper.loadConfig();
+      if (!config) return;
+
+      treeProvider.updateConfig(config);
+      await treeProvider.refresh();
+      setupWebview.updateCounts(treeProvider.getCounts());
+    } catch {
+      // Silent fail on auto-sync
+    }
+  }, AUTO_SYNC_INTERVAL);
+
+  context.subscriptions.push({ dispose: () => clearInterval(autoSyncTimer) });
 }
 
 export function deactivate() {}

@@ -1,16 +1,34 @@
 import * as vscode from 'vscode';
 
+export interface PipelineCounts {
+  todo: number;
+  doing: number;
+  review: number;
+  qa: number;
+  done: number;
+}
+
 export class SetupWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'trelloPilot.setup';
   private _view?: vscode.WebviewView;
   private _state: 'no-credentials' | 'no-board' | 'ready' = 'no-credentials';
   private _boardName?: string;
+  private _counts: PipelineCounts = { todo: 0, doing: 0, review: 0, qa: 0, done: 0 };
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   setState(state: 'no-credentials' | 'no-board' | 'ready', boardName?: string) {
     this._state = state;
     this._boardName = boardName;
+    this._updateView();
+  }
+
+  updateCounts(counts: PipelineCounts) {
+    this._counts = counts;
+    this._updateView();
+  }
+
+  private _updateView() {
     if (this._view) {
       this._view.webview.html = this._getHtml(this._view.webview);
     }
@@ -171,6 +189,9 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private _getReadyHtml(nonce: string): string {
+    const c = this._counts;
+    const total = c.todo + c.doing + c.review + c.qa + c.done;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -186,43 +207,79 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
       Connected to ${this._escapeHtml(this._boardName || 'board')}
     </div>
 
+    <div class="pipeline">
+      <div class="pipeline-header">
+        <h4>Pipeline</h4>
+        <span class="pipeline-total">${total} cards</span>
+      </div>
+      <div class="pipeline-stages">
+        <div class="stage ${c.todo > 0 ? 'stage-active' : ''}">
+          <div class="stage-icon">&#9998;</div>
+          <div class="stage-count">${c.todo}</div>
+          <div class="stage-label">Todo</div>
+        </div>
+        <div class="stage-arrow">&#8594;</div>
+        <div class="stage ${c.doing > 0 ? 'stage-active' : ''}">
+          <div class="stage-icon">&#9654;</div>
+          <div class="stage-count">${c.doing}</div>
+          <div class="stage-label">Doing</div>
+        </div>
+        <div class="stage-arrow">&#8594;</div>
+        <div class="stage ${c.review > 0 ? 'stage-active' : ''}">
+          <div class="stage-icon">&#128269;</div>
+          <div class="stage-count">${c.review}</div>
+          <div class="stage-label">Review</div>
+        </div>
+        <div class="stage-arrow">&#8594;</div>
+        <div class="stage ${c.qa > 0 ? 'stage-active' : ''}">
+          <div class="stage-icon">&#9874;</div>
+          <div class="stage-count">${c.qa}</div>
+          <div class="stage-label">QA</div>
+        </div>
+        <div class="stage-arrow">&#8594;</div>
+        <div class="stage stage-done ${c.done > 0 ? 'stage-active' : ''}">
+          <div class="stage-icon">&#10003;</div>
+          <div class="stage-count">${c.done}</div>
+          <div class="stage-label">Done</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
     <div class="actions">
       <button class="btn btn-primary btn-full" id="btnSync">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M13.451 5.609l-.579-.939-1.068.812-.076.094c-.335.415-.927 1.146-1.26 1.158-.26-.003-.51-.398-.84-1.108l-.053-.12C8.905 3.816 8.047 2 6.264 2 4.652 2 3.6 3.51 2.812 5.381l-.192.465 1.733.715.192-.465C5.2 4.58 5.858 3.7 6.264 3.7c.37 0 .845.89 1.39 2.126l.079.178c.529 1.2 1.128 2.562 2.328 2.589 1.058.003 1.846-.91 2.336-1.517l.127-.154.48.778.147-.291c.652-1.293 1.312-2.736 1.349-4.409h-1.7c-.023 1.01-.362 1.987-.749 2.609zM9.736 10.391c-.529-1.2-1.128-2.562-2.328-2.588-1.058-.003-1.846.91-2.336 1.517l-.127.154-.48-.778-.147.291c-.651 1.293-1.312 2.736-1.349 4.409h1.7c.023-1.01.362-1.987.749-2.609l.579.939 1.068-.812.076-.094c.335-.415.927-1.146 1.26-1.158.26.003.51.398.84 1.108l.053.12c.67 1.69 1.528 3.506 3.311 3.506 1.612 0 2.664-1.51 3.452-3.381l.192-.465-1.733-.715-.192.465c-.656 1.516-1.314 2.396-1.72 2.396-.37 0-.845-.89-1.39-2.126l-.079-.178z"/>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2.006 8.267L.78 9.5 0 8.73l2.09-2.07.76.01 2.09 2.12-.76.76-1.167-1.18a5 5 0 009.4 1.96l.72.68a6 6 0 01-11.13-2.74zm11.988-.534L15.22 6.5 16 7.27l-2.09 2.07-.76-.01-2.09-2.12.76-.76 1.167 1.18a5 5 0 00-9.4-1.96l-.72-.68a6 6 0 0111.13 2.74z"/>
         </svg>
         Sync Cards
       </button>
 
       <button class="btn btn-secondary btn-full" id="btnChangeBoard">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.8 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.4-.5V7.4l-2.4-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM9.4 1l.5 2.4L12 2.1l2 2-1.4 2.1 2.4.4v2.8l-2.4.5L14 12l-2 2-2.1-1.4-.5 2.4H6.6l-.5-2.4L4 14l-2-2 1.4-2.1L1 9.4V6.6l2.4-.5L2 4l2-2 2.1 1.4.5-2.4h2.8zM8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0-1a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
-        </svg>
         Change Board
-      </button>
-
-      <button class="btn btn-link btn-full" id="btnOpenSettings">
-        Extension Settings
       </button>
     </div>
 
     <div class="divider"></div>
 
     <div class="info">
-      <h4>Quick Guide</h4>
+      <h4>Pipeline Guide</h4>
       <ul>
-        <li><strong>Sync</strong> — pull latest cards from Trello</li>
-        <li><strong>&#9654; Play</strong> — run AI agent on a card</li>
-        <li><strong>Run All</strong> — process all To Do cards</li>
+        <li><strong>&#9654; Play</strong> — implement a Todo card</li>
+        <li><strong>&#128269; Review</strong> — AI code review for bugs &amp; rules</li>
+        <li><strong>&#9874; QA</strong> — run tests, merge &amp; push to main</li>
         <li><strong>&#8599; Link</strong> — open card in Trello</li>
+        <li><strong>Sync</strong> — refresh from Trello (auto every 5min)</li>
       </ul>
     </div>
 
     <div class="divider"></div>
 
-    <button class="btn btn-link btn-full" id="btnChangeCredentials">
-      Change API credentials
-    </button>
+    <div class="footer-links">
+      <button class="btn btn-link" id="btnOpenSettings">Settings</button>
+      <span class="footer-sep">|</span>
+      <button class="btn btn-link" id="btnChangeCredentials">Credentials</button>
+    </div>
   </div>
 
   <script nonce="${nonce}">
@@ -359,6 +416,65 @@ export class SetupWebviewProvider implements vscode.WebviewViewProvider {
         line-height: 1.4;
       }
       .info li strong { color: var(--vscode-foreground); }
+      .pipeline { margin-bottom: 4px; }
+      .pipeline-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .pipeline-header h4 { margin: 0; }
+      .pipeline-total {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .pipeline-stages {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+      .stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 6px 4px;
+        border-radius: 6px;
+        min-width: 40px;
+        opacity: 0.4;
+        transition: opacity 0.2s;
+      }
+      .stage-active { opacity: 1; }
+      .stage-icon { font-size: 14px; }
+      .stage-count {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--vscode-foreground);
+      }
+      .stage-label {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .stage-done .stage-count { color: #28a745; }
+      .stage-arrow {
+        font-size: 10px;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.5;
+      }
+      .footer-links {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+      }
+      .footer-sep {
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.4;
+        font-size: 11px;
+      }
     `;
   }
 
