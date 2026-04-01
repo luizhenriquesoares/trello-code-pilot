@@ -617,21 +617,10 @@ sys.stdout.flush()
       return expectedBranch;
     } catch { /* ignore */ }
 
-    // 5. No branch found — ask user: run on main or cancel
-    this.output.logAgent(card.name, 'No branch found — card may not have been implemented via Play');
-    const pick = await vscode.window.showQuickPick(
-      [
-        { label: 'main', description: 'Review/QA changes committed directly to main' },
-        { label: 'Cancel', description: 'Cancel this operation' },
-      ],
-      { placeHolder: `No branch found for "${card.name}". Run on main?` },
-    );
-
-    if (!pick || pick.label === 'Cancel') {
-      throw new Error(`No branch found for "${card.name}". Run Play first to create a branch.`);
-    }
-
+    // 5. No branch found — default to main automatically
+    this.output.logAgent(card.name, 'No branch found — using main');
     await this.execGit(workspaceRoot, ['checkout', 'main']);
+    await this.execGit(workspaceRoot, ['pull', 'origin', 'main']).catch(() => { /* ignore pull failures */ });
     return 'main';
   }
 
