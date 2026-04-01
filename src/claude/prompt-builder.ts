@@ -70,12 +70,65 @@ export class PromptBuilder {
       sections.push('');
     }
 
-    sections.push('## Instructions');
-    sections.push(
-      'Implement this task following the project rules and conventions above. ' +
-      'Read the codebase to understand existing patterns before making changes. ' +
-      'Commit when done with a clear message referencing this task.',
-    );
+    // Detect if this is a bug from title/description/labels
+    const isBug = this.isBugTask(card);
+
+    if (isBug) {
+      sections.push('## Instructions (BUG FIX)');
+      sections.push('');
+      sections.push('You MUST follow this exact sequence. Do NOT skip steps.');
+      sections.push('');
+      sections.push('### Step 1 — Investigate (DO NOT write code yet)');
+      sections.push('- Trace the FULL flow of the reported bug end-to-end');
+      sections.push('- Read every file involved in the chain (controller → use case → service → repository)');
+      sections.push('- Check environment variables, config files, and external service integrations');
+      sections.push('- Check git log for recent changes that may have introduced the bug');
+      sections.push('- Identify the ROOT CAUSE — not just the symptom');
+      sections.push('');
+      sections.push('### Step 2 — Confirm root cause');
+      sections.push('- Write a brief explanation of WHY the bug happens (not just WHERE)');
+      sections.push('- Verify your hypothesis by reading related code paths');
+      sections.push('');
+      sections.push('### Step 3 — Implement the fix');
+      sections.push('- Fix the ROOT CAUSE, not the symptom');
+      sections.push('- Adding a try/catch, logging, or swallowing errors is NOT a fix unless the root cause is genuinely missing error handling');
+      sections.push('- If the bug is "X is not working", the fix must make X work — not just log that X failed');
+      sections.push('- If config/env vars are missing, document what needs to be added');
+      sections.push('');
+      sections.push('### Step 4 — Validate');
+      sections.push('- Run `npx tsc --noEmit` to ensure no type errors');
+      sections.push('- Verify the fix addresses the exact scenario described in the bug report');
+      sections.push('- Check that you haven\'t broken adjacent functionality');
+      sections.push('');
+      sections.push('### Step 5 — Commit');
+      sections.push('- Commit with message: "fix: <what was fixed and why>"');
+      sections.push('- The commit message should explain the root cause, not just the change');
+      sections.push('');
+      sections.push('CRITICAL RULES:');
+      sections.push('- NEVER mark a bug as "fixed" if you only added logging');
+      sections.push('- NEVER swallow errors with empty .catch(() => {}) — if an error needs catching, handle it properly');
+      sections.push('- If you cannot determine the root cause, say so explicitly instead of making superficial changes');
+      sections.push('- If the fix requires environment/config changes, create a clear comment explaining what to configure');
+    } else {
+      sections.push('## Instructions (FEATURE / IMPROVEMENT)');
+      sections.push('');
+      sections.push('### Step 1 — Understand the codebase');
+      sections.push('- Read CLAUDE.md and relevant existing code before making changes');
+      sections.push('- Understand current patterns, naming conventions, and architecture');
+      sections.push('');
+      sections.push('### Step 2 — Implement');
+      sections.push('- Follow project rules and conventions strictly');
+      sections.push('- Implement exactly what the task asks — no more, no less');
+      sections.push('- Use existing patterns in the codebase as reference');
+      sections.push('');
+      sections.push('### Step 3 — Validate');
+      sections.push('- Run `npx tsc --noEmit` to ensure no type errors');
+      sections.push('- Verify all imports resolve correctly');
+      sections.push('');
+      sections.push('### Step 4 — Commit');
+      sections.push('- Commit with a clear message describing what was implemented');
+    }
+
     sections.push('');
     sections.push('IMPORTANT: This is a fully automated pipeline. Do NOT ask for confirmation. Do NOT wait for user input. Execute all changes immediately, commit, and finish.');
     sections.push('Do NOT commit unrelated files like .trello-pilot-origins.json, .trello-pilot.json, or any config/env files.');
@@ -163,6 +216,23 @@ export class PromptBuilder {
     sections.push('- **Issue**: description');
     sections.push('- **Fix**: suggested change');
     sections.push('');
+    sections.push('### Superficial Fix Detection (CRITICAL)');
+    sections.push('Reject and fix if the implementation ONLY does:');
+    sections.push('- Added try/catch or .catch() without addressing the root cause');
+    sections.push('- Added logging/console.log without fixing the actual problem');
+    sections.push('- Changed error messages without fixing the error');
+    sections.push('- Swallowed errors that should be handled properly');
+    sections.push('- Added "defensive" null checks that mask the real issue');
+    sections.push('If the task is a bug fix, verify the ROOT CAUSE is addressed, not just the symptom.');
+    sections.push('');
+    sections.push('## Output Format');
+    sections.push('For each issue found, output:');
+    sections.push('- **File**: path');
+    sections.push('- **Line**: number');
+    sections.push('- **Severity**: CRITICAL / WARNING / SUGGESTION');
+    sections.push('- **Issue**: description');
+    sections.push('- **Fix**: suggested change');
+    sections.push('');
     sections.push('If issues are found, fix them directly in the code. Commit with message: "fix: code review fixes for <task-name>"');
     sections.push('If no issues, report "Review passed — no issues found."');
     sections.push('');
@@ -223,6 +293,13 @@ export class PromptBuilder {
     sections.push('- Verify the implementation addresses every requirement');
     sections.push('- Check edge cases are handled');
     sections.push('');
+    sections.push('### Step 4.5 — Root Cause Verification (for bug fixes)');
+    sections.push('- If this was a bug fix, verify the ROOT CAUSE is addressed');
+    sections.push('- Check: does the fix actually solve the problem, or just add logging/error handling?');
+    sections.push('- If the fix only added try/catch, logging, or error messages WITHOUT fixing the underlying issue → FAIL the QA');
+    sections.push('- A proper bug fix must change the BEHAVIOR, not just the error output');
+    sections.push('- If the fix is insufficient, implement the proper fix yourself before proceeding');
+    sections.push('');
     sections.push('### Step 5 — If ALL checks pass');
     sections.push('1. Switch to main: `git checkout main && git pull origin main`');
     sections.push(`2. Merge the branch: \`git merge ${branchName}\``);
@@ -243,6 +320,21 @@ export class PromptBuilder {
     sections.push(`Trello card: ${card.url}`);
 
     return sections.join('\n');
+  }
+
+  private isBugTask(card: TrelloCard): boolean {
+    const text = `${card.name} ${card.desc || ''}`.toLowerCase();
+    const bugKeywords = [
+      'bug', 'erro', 'error', 'fix', 'não funciona', 'nao funciona',
+      'não está', 'nao esta', 'quebr', 'broken', 'crash', 'fail',
+      'problema', 'issue', 'defeito', 'não consigo', 'nao consigo',
+      'não chega', 'nao chega', 'sem funcionar', 'indisponív', 'indisponiv',
+      'urgente', 'urgent',
+    ];
+    const hasBugLabel = card.labels?.some((l) =>
+      l.color === 'red' || l.name?.toLowerCase().includes('bug'),
+    );
+    return hasBugLabel || bugKeywords.some((kw) => text.includes(kw));
   }
 
   buildBranchName(card: TrelloCard, prefix: string): string {
