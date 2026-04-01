@@ -2,7 +2,7 @@
   "name": "trello-code-pilot",
   "displayName": "Trello Code Pilot",
   "description": "Turn Trello cards into code — AI agents read your board, create branches, implement tasks, and move cards automatically.",
-  "version": "0.3.3",
+  "version": "0.5.1",
   "publisher": "LuizHenriqueSoares",
   "license": "MIT",
   "repository": {
@@ -80,6 +80,16 @@
         "icon": "$(run-all)"
       },
       {
+        "command": "trelloPilot.reviewCard",
+        "title": "Trello Code Pilot: Review Card",
+        "icon": "$(search)"
+      },
+      {
+        "command": "trelloPilot.qaCard",
+        "title": "Trello Code Pilot: Run QA on Card",
+        "icon": "$(beaker)"
+      },
+      {
         "command": "trelloPilot.openCard",
         "title": "Trello Code Pilot: Open Card in Trello",
         "icon": "$(link-external)"
@@ -120,8 +130,18 @@
           "group": "inline@1"
         },
         {
+          "command": "trelloPilot.reviewCard",
+          "when": "view == trelloPilot.cards && viewItem == reviewCard",
+          "group": "inline@1"
+        },
+        {
+          "command": "trelloPilot.qaCard",
+          "when": "view == trelloPilot.cards && viewItem == qaCard",
+          "group": "inline@1"
+        },
+        {
           "command": "trelloPilot.openCard",
-          "when": "view == trelloPilot.cards && viewItem == card",
+          "when": "view == trelloPilot.cards && viewItem =~ /card|reviewCard|qaCard/",
           "group": "inline@2"
         }
       ]

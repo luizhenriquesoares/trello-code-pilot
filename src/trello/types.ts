@@ -73,6 +73,8 @@ export interface WorkspaceConfig {
     doing: string;
     done: string;
     review?: string;
+    qa?: string;
   };
   assignee?: string;
+  rules?: string[];
 }

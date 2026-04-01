@@ -6,6 +6,8 @@ export class CardTreeItem extends vscode.TreeItem {
   constructor(
     public readonly card: TrelloCard,
     public readonly listName: string,
+    public readonly isReviewCard: boolean = false,
+    public readonly isQaCard: boolean = false,
   ) {
     super(card.name, vscode.TreeItemCollapsibleState.None);
 
@@ -23,7 +25,7 @@ export class CardTreeItem extends vscode.TreeItem {
     this.tooltip.isTrusted = true;
 
     this.description = this.buildDescription();
-    this.contextValue = 'card';
+    this.contextValue = isReviewCard ? 'reviewCard' : (isQaCard ? 'qaCard' : 'card');
 
     // Icon based on labels
     if (card.due) {
@@ -149,6 +151,7 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
       this.config.lists.todo,
       this.config.lists.doing,
       ...(this.config.lists.review ? [this.config.lists.review] : []),
+      ...(this.config.lists.qa ? [this.config.lists.qa] : []),
     ]);
 
     this.lists = this.lists.filter((l) => relevantListIds.has(l.id));
@@ -170,7 +173,9 @@ export class CardsTreeProvider implements vscode.TreeDataProvider<vscode.TreeIte
     }
 
     if (element instanceof ListTreeItem) {
-      return element.cards.map((card) => new CardTreeItem(card, element.list.name));
+      const isReviewList = this.config?.lists.review === element.list.id;
+      const isQaList = this.config?.lists.qa === element.list.id;
+      return element.cards.map((card) => new CardTreeItem(card, element.list.name, isReviewList, isQaList));
     }
 
     return [];

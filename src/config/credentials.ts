@@ -1,18 +1,54 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { TrelloCredentials } from '../trello/types';
 
 const SECRET_KEY = 'trelloPilot.apiKey';
 const SECRET_TOKEN = 'trelloPilot.apiToken';
+const CONFIG_FILE = '.trello-pilot.json';
 
 export class CredentialStore {
   constructor(private secrets: vscode.SecretStorage) {}
+
+  private getConfigPath(): string | undefined {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.length) return undefined;
+    return path.join(folders[0].uri.fsPath, CONFIG_FILE);
+  }
+
+  private getCredentialsFromConfig(): TrelloCredentials | undefined {
+    const configPath = this.getConfigPath();
+    if (!configPath || !fs.existsSync(configPath)) return undefined;
+    try {
+      const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (raw.credentials?.key && raw.credentials?.token) {
+        return { key: raw.credentials.key, token: raw.credentials.token };
+      }
+    } catch { /* ignore */ }
+    return undefined;
+  }
+
+  private saveCredentialsToConfig(creds: TrelloCredentials): void {
+    const configPath = this.getConfigPath();
+    if (!configPath) return;
+    try {
+      let config: Record<string, unknown> = {};
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+      config.credentials = { key: creds.key, token: creds.token };
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    } catch { /* ignore */ }
+  }
 
   async getCredentials(): Promise<TrelloCredentials | undefined> {
     const key = await this.secrets.get(SECRET_KEY);
     const token = await this.secrets.get(SECRET_TOKEN);
 
-    if (!key || !token) return undefined;
-    return { key, token };
+    if (key && token) return { key, token };
+
+    // Fallback: read from config file
+    return this.getCredentialsFromConfig();
   }
 
   async setCredentials(): Promise<TrelloCredentials | undefined> {
@@ -61,6 +97,9 @@ export class CredentialStore {
 
     await this.secrets.store(SECRET_KEY, key);
     await this.secrets.store(SECRET_TOKEN, token);
+
+    // Also save to config file as fallback
+    this.saveCredentialsToConfig({ key, token });
 
     vscode.window.showInformationMessage('Trello credentials validated and saved!');
     return { key, token };

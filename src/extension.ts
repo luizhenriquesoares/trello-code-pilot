@@ -188,6 +188,78 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  // Review Card
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.reviewCard', async (item?: CardTreeItem) => {
+      try {
+        const creds = await ensureCredentials();
+        const api = new TrelloApi(creds);
+        const mapper = new WorkspaceMapper(api);
+        const config = mapper.loadConfig();
+
+        if (!config) {
+          vscode.window.showWarningMessage('Run Setup first to connect a Trello board.');
+          return;
+        }
+
+        const card = item?.card;
+        if (!card) {
+          vscode.window.showWarningMessage('Select a card from the Review list.');
+          return;
+        }
+
+        const confirm = await vscode.window.showInformationMessage(
+          `Run code review on "${card.name}"?`,
+          'Review',
+          'Cancel',
+        );
+        if (confirm !== 'Review') return;
+
+        const runner = new AgentRunner(api, config, outputPanel);
+        await runner.review(card);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Review failed: ${err.message}`);
+        outputPanel.logError(`Review failed: ${err.message}`);
+      }
+    }),
+  );
+
+  // QA Card
+  context.subscriptions.push(
+    vscode.commands.registerCommand('trelloPilot.qaCard', async (item?: CardTreeItem) => {
+      try {
+        const creds = await ensureCredentials();
+        const api = new TrelloApi(creds);
+        const mapper = new WorkspaceMapper(api);
+        const config = mapper.loadConfig();
+
+        if (!config) {
+          vscode.window.showWarningMessage('Run Setup first to connect a Trello board.');
+          return;
+        }
+
+        const card = item?.card;
+        if (!card) {
+          vscode.window.showWarningMessage('Select a card from the QA list.');
+          return;
+        }
+
+        const confirm = await vscode.window.showInformationMessage(
+          `Run QA on "${card.name}"? If tests pass, it will merge to main and push.`,
+          'Run QA',
+          'Cancel',
+        );
+        if (confirm !== 'Run QA') return;
+
+        const runner = new AgentRunner(api, config, outputPanel);
+        await runner.qa(card);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`QA failed: ${err.message}`);
+        outputPanel.logError(`QA failed: ${err.message}`);
+      }
+    }),
+  );
+
   // Run Agent on All Cards
   context.subscriptions.push(
     vscode.commands.registerCommand('trelloPilot.runAll', async () => {
