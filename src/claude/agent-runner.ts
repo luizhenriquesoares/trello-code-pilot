@@ -352,10 +352,21 @@ export class AgentRunner {
     this.output.logSeparator();
     this.output.logAgent(card.name, 'Starting QA...');
 
-    // Find the branch (exact, fuzzy, or manual pick)
-    const branchName = await this.findBranch(workspaceRoot, card, branchPrefix);
-    await this.execGit(workspaceRoot, ['checkout', branchName]);
-    this.output.logAgent(card.name, `Switched to branch: ${branchName}`);
+    // Try current branch first (Review may have left it checked out)
+    let branchName: string;
+    const currentBranch = await this.execGit(workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const expectedBranch = this.promptBuilder.buildBranchName(card, branchPrefix);
+
+    if (currentBranch === expectedBranch || currentBranch !== 'main' && currentBranch !== 'master') {
+      // Already on the right branch (or a feature branch from Review)
+      branchName = currentBranch;
+      this.output.logAgent(card.name, `Using current branch: ${branchName}`);
+    } else {
+      // Fallback to findBranch (fuzzy search)
+      branchName = await this.findBranch(workspaceRoot, card, branchPrefix);
+      await this.execGit(workspaceRoot, ['checkout', branchName]);
+      this.output.logAgent(card.name, `Switched to branch: ${branchName}`);
+    }
 
     // Find PR URL
     let prUrl = '';
