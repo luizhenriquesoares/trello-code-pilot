@@ -444,7 +444,17 @@ export class AgentRunner {
       try {
         await this.execShell(workspaceRoot, `gh pr merge ${branchName} --squash --delete-branch`);
         merged = true;
-        this.output.logAgent(card.name, 'PR merged and branch deleted');
+        this.output.logAgent(card.name, 'PR merged and remote branch deleted');
+
+        // Clean up local branch — switch to main and delete feature branch
+        try {
+          await this.execGit(workspaceRoot, ['checkout', 'main']);
+          await this.execGit(workspaceRoot, ['pull', 'origin', 'main']);
+          await this.execGit(workspaceRoot, ['branch', '-D', branchName]);
+          this.output.logAgent(card.name, `Local branch ${branchName} deleted`);
+        } catch {
+          // Non-blocking — local cleanup is best-effort
+        }
       } catch (err: unknown) {
         this.output.logError(`PR merge failed: ${(err as Error).message}`);
       }
