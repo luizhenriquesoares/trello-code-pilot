@@ -1,15 +1,20 @@
-# Trello Code Pilot
+# TaskPilot VS Code
 
-> Turn Trello cards into code with a full AI-powered CI pipeline — implement, review, test, and merge — all from VS Code. Supports local execution and headless server automation via SQS.
+> Turn Trello cards into code with a full AI-powered CI pipeline — implement, review, test, and merge — all from VS Code.
 
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/LuizHenriqueSoares.trello-code-pilot)](https://marketplace.visualstudio.com/items?itemName=LuizHenriqueSoares.trello-code-pilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Part of the **TaskPilot** ecosystem:
+- [taskpilot-app](https://github.com/luizhenriquesoares/taskpilot-app) — Web app for creating tasks via text/voice
+- **taskpilot-vscode** (this repo) — VS Code extension for interactive development
+- [taskpilot-worker](https://github.com/luizhenriquesoares/taskpilot-worker) — Headless automation server
 
 ---
 
 ## What it does
 
-Trello Code Pilot connects your Trello board to your codebase and runs a full AI pipeline on each card:
+TaskPilot VS Code connects your Trello board to your codebase and runs a full AI pipeline on each card:
 
 1. **Estimate** — Quick complexity analysis (S/M/L/XL) before starting
 2. **Implement** — Claude Code reads the card, creates a branch, writes code, pushes, and creates a PR
@@ -208,7 +213,7 @@ Rules are injected into every agent prompt and enforced during review:
 
 ## Server Automation (Headless Worker)
 
-For fully automated execution without VS Code:
+For fully automated execution without VS Code, see [taskpilot-worker](https://github.com/luizhenriquesoares/taskpilot-worker).
 
 ### Architecture
 
@@ -264,7 +269,7 @@ Creates: SQS queue, ECS Fargate cluster, Lambda webhook handler, API Gateway, Se
 ## Project Structure
 
 ```
-trello-code-pilot/
+taskpilot-vscode/
 ├── src/                    # VS Code extension
 │   ├── claude/
 │   │   ├── agent-runner.ts    # Pipeline orchestration (run, review, qa)
