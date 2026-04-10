@@ -107,10 +107,36 @@ async function setupGhAuth(ghToken: string): Promise<void> {
   });
 }
 
+async function cleanupStaleTmpDirs(): Promise<void> {
+  const { readdir, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+
+  try {
+    const tmp = tmpdir();
+    const entries = await readdir(tmp);
+    const stale = entries.filter((e) => e.startsWith('trello-pilot'));
+    for (const entry of stale) {
+      const full = join(tmp, entry);
+      try {
+        await rm(full, { recursive: true, force: true });
+        console.log(`[init] Cleaned up stale tmp dir: ${full}`);
+      } catch (err) {
+        console.warn(`[init] Failed to clean ${full}: ${(err as Error).message}`);
+      }
+    }
+  } catch (err) {
+    console.warn(`[init] Stale tmp cleanup failed: ${(err as Error).message}`);
+  }
+}
+
 async function main(): Promise<void> {
   console.log('[init] Trello Code Pilot Worker starting...');
 
   const config = loadEnvConfig();
+
+  // Clean up any stale work directories from previous crashed runs
+  await cleanupStaleTmpDirs();
 
   // Authenticate GitHub CLI
   await setupGhAuth(config.ghToken);

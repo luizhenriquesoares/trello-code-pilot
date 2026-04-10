@@ -54,6 +54,8 @@ export class PipelineOrchestrator {
 
     console.log(`[orchestrator] Processing ${event.stage} for card ${event.cardId}`);
 
+    const workDirsToCleanup: string[] = [];
+
     try {
       switch (event.stage) {
         case PipelineStage.IMPLEMENT: {
@@ -68,6 +70,7 @@ export class PipelineOrchestrator {
             trelloCommenter: this.deps.trelloCommenter,
             slackNotifier: this.deps.slackNotifier,
           });
+          workDirsToCleanup.push(result.workDir);
 
           costTracker.addStageCost(
             event.cardId,
@@ -93,6 +96,7 @@ export class PipelineOrchestrator {
 
           // Clone fresh for review
           const workDir = await this.prepareWorkDir(event);
+          workDirsToCleanup.push(workDir);
           await this.deps.repoManager.clone(event.repoConfig.repoUrl, workDir, event.repoConfig.baseBranch);
 
           const result = await this.reviewStage.run(event, {
@@ -126,6 +130,7 @@ export class PipelineOrchestrator {
 
           // Clone fresh for QA
           const workDir = await this.prepareWorkDir(event);
+          workDirsToCleanup.push(workDir);
           await this.deps.repoManager.clone(event.repoConfig.repoUrl, workDir, event.repoConfig.baseBranch);
 
           // Get PR URL
@@ -187,6 +192,19 @@ export class PipelineOrchestrator {
       }
 
       throw err;
+    } finally {
+      // Always clean up work directories to prevent /tmp exhaustion
+      for (const workDir of workDirsToCleanup) {
+        try {
+          const { rm } = await import('node:fs/promises');
+          await rm(workDir, { recursive: true, force: true });
+          console.log(`[orchestrator] Cleaned up work dir: ${workDir}`);
+        } catch (cleanupErr) {
+          console.warn(
+            `[orchestrator] Failed to clean up work dir ${workDir}: ${(cleanupErr as Error).message}`,
+          );
+        }
+      }
     }
   }
 
